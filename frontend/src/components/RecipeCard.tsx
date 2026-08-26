@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { ImageOff } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { MatchBadge } from "@/components/MatchBadge";
+import { Rating } from "@/components/Rating";
+import { RecipeTime } from "@/components/RecipeTime";
+import { MissingIngredients } from "@/components/MissingIngredients";
 import type { RecipeMatch } from "@/api/types";
 
 interface RecipeCardProps {
@@ -11,16 +14,15 @@ interface RecipeCardProps {
 
 export function RecipeCard({ recipe }: RecipeCardProps) {
   const [imageLoadError, setImageLoadError] = useState(false);
-  const totalTime = (recipe.prepTimeMinutes ?? 0) + (recipe.cookTimeMinutes ?? 0);
   const hasValidImage = recipe.imageUrl && !imageLoadError;
 
   return (
-    <Link to={`/recipes/${recipe.id}`} className="block">
-      <Card className="overflow-hidden rounded-2xl border-border py-0 shadow-sm transition-shadow hover:shadow-md">
+    <Link to={`/recipes/${recipe.id}`} className="block h-full">
+      <Card className="flex h-full flex-col overflow-hidden rounded-2xl border-border py-0 shadow-sm transition-shadow hover:shadow-md">
         <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
           {hasValidImage ? (
             <img
-              src={recipe.imageUrl!}
+              src={recipe.imageUrl ?? undefined}
               alt={recipe.title}
               loading="lazy"
               className="size-full object-cover"
@@ -33,14 +35,16 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
             </div>
           )}
         </div>
-        <CardContent className="flex flex-col gap-2 px-4 pb-4">
-          <h3 className="text-base font-semibold leading-tight text-foreground">{recipe.title}</h3>
-          <MatchBadge matchPercentage={recipe.matchPercentage} />
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{totalTime > 0 ? `${totalTime} min` : "—"}</span>
-            {recipe.missingCount > 0 && (
-              <span>Missing {recipe.missingCount} ingredient{recipe.missingCount === 1 ? "" : "s"}</span>
-            )}
+        <CardContent className="flex flex-1 flex-col gap-3 px-4 pb-4 pt-4">
+          <h3 className="text-base font-semibold leading-tight text-foreground line-clamp-2">{recipe.title}</h3>
+          <Rating value={recipe.ratings} />
+          <RecipeTime
+            prepTimeMinutes={recipe.prepTimeMinutes}
+            cookTimeMinutes={recipe.cookTimeMinutes}
+          />
+          <div className="mt-auto space-y-2">
+            <MatchBadge matchPercentage={recipe.matchPercentage} />
+            <MissingIngredients ingredients={recipe.missingIngredients} count={recipe.missingCount} />
           </div>
         </CardContent>
       </Card>

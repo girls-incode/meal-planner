@@ -36,8 +36,33 @@ describe("RecipeCard", () => {
   });
 
   it("shows the missing ingredient count for a partial match", () => {
-    renderCard(makeRecipe({ matchPercentage: 75, missingCount: 2 }));
-    expect(screen.getByText("Missing 2 ingredients")).toBeInTheDocument();
+    renderCard(makeRecipe({
+      matchPercentage: 75,
+      missingCount: 2,
+      missingIngredients: [
+        { id: "i1", name: "Milk" },
+        { id: "i2", name: "Butter" },
+      ],
+    }));
+    expect(screen.getByText(/Missing 2 ingredients/)).toBeInTheDocument();
+  });
+
+  it("shows missing ingredient names and limits the list to three", () => {
+    renderCard(makeRecipe({
+      missingCount: 4,
+      missingIngredients: [
+        { id: "i1", name: "Milk" },
+        { id: "i2", name: "Butter" },
+        { id: "i3", name: "Flour" },
+        { id: "i4", name: "Eggs" },
+      ],
+    }));
+
+    expect(screen.getByText("Milk")).toBeInTheDocument();
+    expect(screen.getByText("Butter")).toBeInTheDocument();
+    expect(screen.getByText("Flour")).toBeInTheDocument();
+    expect(screen.getByText("+1 more")).toBeInTheDocument();
+    expect(screen.queryByText("Eggs")).not.toBeInTheDocument();
   });
 
   it("renders the total cook time", () => {

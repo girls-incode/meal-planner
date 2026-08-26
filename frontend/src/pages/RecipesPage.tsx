@@ -1,60 +1,53 @@
-import { Link } from "react-router-dom";
 import { RecipeCard } from "@/components/RecipeCard";
-import { EmptyState } from "@/components/EmptyState";
+import { RecipeEmptyState } from "@/components/RecipeEmptyState";
+import { Loader } from "@/components/Loader";
 import { useRecipeMatches } from "@/hooks/useRecipeMatches";
 import { usePantry } from "@/hooks/usePantry";
 
 export function RecipesPage() {
-  const { data: pantryItems = [] } = usePantry();
+  const { data: pantryItems = [], isLoading: isPantryLoading, isError: isPantryError } = usePantry();
   const { data: recipes = [], isLoading, isError } = useRecipeMatches();
 
-  if (pantryItems.length === 0) {
+  if (isPantryLoading) {
+    return <Loader label="Loading pantry…" />;
+  }
+
+  if (isPantryError) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-10">
-        <EmptyState
-          title="Your kitchen is empty"
-          description="Add a few ingredients you have and we'll find recipes you can make."
-          action={
-            <Link
-              to="/"
-              className="mt-2 inline-flex items-center justify-center rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
-            >
-              Add ingredients
-            </Link>
-          }
-        />
-      </div>
+      <RecipeEmptyState
+        title="Something went wrong"
+        description="We couldn't load your pantry. Please try again."
+      />
     );
+  }
+
+  if (pantryItems.length === 0) {
+    return <RecipeEmptyState
+      title="Your kitchen is empty"
+      description="Add a few ingredients you have and we'll find recipes you can make."
+      actionLabel="Add ingredients"
+    />;
   }
 
   if (isError) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-10">
-        <EmptyState
-          title="Something went wrong"
-          description="We couldn't load your recipe matches. Please try again."
-        />
-      </div>
+      <RecipeEmptyState
+        title="Something went wrong"
+        description="We couldn't load your recipe matches. Please try again."
+      />
     );
   }
 
-  if (!isLoading && recipes.length === 0) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-10">
-        <EmptyState
-          title="Nothing close enough yet"
-          description="Try adding another ingredient or allowing recipes with more missing items."
-          action={
-            <Link
-              to="/"
-              className="mt-2 inline-flex items-center justify-center rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
-            >
-              Add ingredient
-            </Link>
-          }
-        />
-      </div>
-    );
+  if (isLoading) {
+    return <Loader label="Loading recipes…" />;
+  }
+
+  if (recipes.length === 0) {
+    return <RecipeEmptyState
+      title="Nothing close enough yet"
+      description="Try adding another ingredient or allowing recipes with more missing items."
+      actionLabel="Add ingredient"
+    />;
   }
 
   return (

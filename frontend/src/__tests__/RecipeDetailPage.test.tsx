@@ -223,7 +223,7 @@ describe("RecipeDetailPage", () => {
     renderWithProviders();
 
     await waitFor(() => {
-      expect(screen.getByText("—")).toBeInTheDocument();
+      expect(screen.getByText("Prep: —")).toBeInTheDocument();
     });
   });
 });

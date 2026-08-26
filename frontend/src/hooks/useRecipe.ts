@@ -4,7 +4,10 @@ import { getRecipe } from "@/api/recipes";
 export function useRecipe(id: string | undefined) {
   return useQuery({
     queryKey: ["recipe", id],
-    queryFn: () => getRecipe(id as string),
+    queryFn: () => {
+      if (!id) throw new Error("Recipe ID is required");
+      return getRecipe(id);
+    },
     enabled: Boolean(id),
   });
 }

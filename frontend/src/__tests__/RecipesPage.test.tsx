@@ -26,6 +26,14 @@ afterEach(() => {
 });
 
 describe("RecipesPage", () => {
+  it("shows a loading state while the pantry is being fetched", () => {
+    vi.spyOn(pantryApi, "getPantry").mockReturnValue(new Promise(() => {}));
+
+    renderPage();
+
+    expect(screen.getByText("Loading pantry…")).toBeInTheDocument();
+  });
+
   it("shows the empty-pantry state when there are no pantry items", async () => {
     vi.spyOn(pantryApi, "getPantry").mockResolvedValue([]);
 
