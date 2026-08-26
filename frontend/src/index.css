@@ -18,8 +18,8 @@
   --popover: #ffffff;
   --popover-foreground: #1f2420;
 
-  --primary: #476a4c; /* earthy green */
-  --primary-hover: #3b5b40;
+  --primary: #388E3C; /* dark vibrant green - Meal Planner brand */
+  --primary-hover: #2E7D32;
   --primary-foreground: #ffffff;
 
   --secondary: #f1efe9;
@@ -31,13 +31,13 @@
   --accent: #e58a45; /* food/highlight accent */
   --accent-foreground: #1f2420;
 
-  --success: #4f7d57;
+  --success: #388E3C;
   --warning: #c98a32;
   --destructive: #c85d4a; /* error */
 
   --border: #e6e2db;
   --input: #e6e2db;
-  --ring: #476a4c;
+  --ring: #388E3C;
 
   --radius: 10px; /* inputs/buttons */
   --radius-card: 16px;

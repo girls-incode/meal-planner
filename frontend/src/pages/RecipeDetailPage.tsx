@@ -1,11 +1,12 @@
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { Check, X, ImageOff } from "lucide-react";
+import { Check, X, ImageOff, ArrowLeft } from "lucide-react";
 import { MatchBadge } from "@/components/MatchBadge";
 import { useRecipe } from "@/hooks/useRecipe";
 
 export function RecipeDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { data: recipe, isLoading, isError } = useRecipe(id);
   const [imageLoadError, setImageLoadError] = useState(false);
 
@@ -26,6 +27,15 @@ export function RecipeDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      <button
+        onClick={() => navigate("/recipes")}
+        className="group mb-6 inline-flex cursor-pointer items-center gap-1 bg-transparent p-0 text-sm transition-all hover:gap-2"
+        aria-label="Back to recipes"
+      >
+        <ArrowLeft className="size-4 text-muted-foreground transition-colors group-hover:text-foreground" />
+        <span className="text-muted-foreground transition-colors group-hover:text-foreground">Back to recipes</span>
+      </button>
+
       {hasValidImage ? (
         <img
           src={recipe.imageUrl!}
