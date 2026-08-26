@@ -83,7 +83,7 @@ describe("useAddPantryItem", () => {
     expect(queryClient.getQueryData(["pantry"])).toEqual(items);
   });
 
-  it("invalidates pantry and recipe-matches queries once settled", async () => {
+  it("invalidates the pantry query once settled", async () => {
     const queryClient = createTestQueryClient();
     vi.spyOn(pantryApi, "addPantryItem").mockResolvedValue(makePantryItem());
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
@@ -96,7 +96,6 @@ describe("useAddPantryItem", () => {
 
     await waitFor(() => {
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["pantry"] });
-      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["recipe-matches"] });
     });
   });
 
@@ -164,7 +163,7 @@ describe("useRemovePantryItem", () => {
     expect(queryClient.getQueryData(["pantry"])).toEqual(items);
   });
 
-  it("invalidates pantry and recipe-matches queries once settled", async () => {
+  it("invalidates the pantry query once settled", async () => {
     const queryClient = createTestQueryClient();
     vi.spyOn(pantryApi, "removePantryItem").mockResolvedValue(undefined);
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
@@ -177,7 +176,6 @@ describe("useRemovePantryItem", () => {
 
     await waitFor(() => {
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["pantry"] });
-      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["recipe-matches"] });
     });
   });
 

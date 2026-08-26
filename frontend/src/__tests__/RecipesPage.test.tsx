@@ -7,8 +7,8 @@ import * as recipesApi from "@/api/recipes";
 import { makeMatchesPage, makePantry, makeRecipeMatch } from "@/test/factories";
 import { renderWithProviders } from "@/test/render";
 
-function renderPage() {
-  return renderWithProviders(<RecipesPage />);
+function renderPage(ingredientIds: string[] | null = ["i1"], searchVersion = 1) {
+  return renderWithProviders(<RecipesPage ingredientIds={ingredientIds} searchVersion={searchVersion} />);
 }
 
 describe("RecipesPage", () => {
@@ -26,6 +26,16 @@ describe("RecipesPage", () => {
     renderPage();
 
     expect(await screen.findByText("Your kitchen is empty")).toBeInTheDocument();
+  });
+
+  it("waits for Find recipes before fetching matches", async () => {
+    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    const getRecipeMatches = vi.spyOn(recipesApi, "getRecipeMatches");
+
+    renderPage(null);
+
+    expect(await screen.findByText("Ready to find recipes")).toBeInTheDocument();
+    expect(getRecipeMatches).not.toHaveBeenCalled();
   });
 
   it("renders the recipes from the response's data array", async () => {
@@ -57,6 +67,7 @@ describe("RecipesPage", () => {
     renderPage();
 
     expect(await screen.findByText("Nothing close enough yet")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add ingredient" })).not.toBeInTheDocument();
   });
 
   it("surfaces the API error message when the matches request fails", async () => {

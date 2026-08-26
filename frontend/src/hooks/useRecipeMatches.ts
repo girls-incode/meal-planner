@@ -1,17 +1,12 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { getRecipeMatches } from "@/api/recipes";
-import { usePantry } from "./usePantry";
 
-export function useRecipeMatches() {
-  const { data: pantryItems } = usePantry();
-
-  const ingredientIds = (pantryItems ?? []).map((item) => item.ingredient.id);
-  // Stable, order-independent cache key so that distinct ingredient sets produce distinct cache entries
-  // (prevents the bug where swapping one ingredient for another with the same pantry size would show stale results)
+export function useRecipeMatches(ingredientIds: string[], searchVersion = 0) {
+  // Stable, order-independent ingredient key, plus a version for an explicit re-search.
   const sortedIdsKey = [...ingredientIds].sort().join(",");
 
   return useInfiniteQuery({
-    queryKey: ["recipe-matches", sortedIdsKey],
+    queryKey: ["recipe-matches", sortedIdsKey, searchVersion],
     queryFn: ({ pageParam }) =>
       pageParam
         ? getRecipeMatches(ingredientIds, { cursor: pageParam })

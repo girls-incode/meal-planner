@@ -1,21 +1,13 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PantryPage } from "@/pages/PantryPage";
-import { ApiError } from "@/api/client";
 import * as pantryApi from "@/api/pantry";
-import * as ingredientsApi from "@/api/ingredients";
-import { makeIngredients, makePantry, makePantryItem } from "@/test/factories";
+import { makePantry } from "@/test/factories";
 import { renderWithProviders } from "@/test/render";
 
-function renderPage() {
-  return renderWithProviders(<PantryPage />);
-}
-
-/** Types into the search box and picks the named suggestion. */
-async function addIngredient(user: ReturnType<typeof userEvent.setup>, name: string) {
-  await user.type(screen.getByPlaceholderText("Add an ingredient..."), name);
-  await user.click(await screen.findByRole("button", { name }));
+function renderPage(onFindRecipes = vi.fn()) {
+  return renderWithProviders(<PantryPage onFindRecipes={onFindRecipes} />);
 }
 
 describe("PantryPage", () => {
@@ -60,49 +52,4 @@ describe("PantryPage", () => {
     expect(removePantryItem.mock.calls[0][0]).toBe("p1");
   });
 
-  it("displays the API error message when adding a pantry item fails", async () => {
-    const user = userEvent.setup();
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue([]);
-    vi.spyOn(ingredientsApi, "searchIngredients").mockResolvedValue(makeIngredients("Egg"));
-    vi.spyOn(pantryApi, "addPantryItem").mockRejectedValue(
-      new ApiError(422, "ingredient already in pantry"),
-    );
-
-    renderPage();
-    await addIngredient(user, "Egg");
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("ingredient already in pantry");
-    });
-  });
-
-  it("displays a generic message when the failure is not an ApiError", async () => {
-    const user = userEvent.setup();
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue([]);
-    vi.spyOn(ingredientsApi, "searchIngredients").mockResolvedValue(makeIngredients("Egg"));
-    vi.spyOn(pantryApi, "addPantryItem").mockRejectedValue(new Error("Network error"));
-
-    renderPage();
-    await addIngredient(user, "Egg");
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Something went wrong. Please try again.",
-      );
-    });
-  });
-
-  it("adds the selected ingredient to the pantry", async () => {
-    const user = userEvent.setup();
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue([]);
-    vi.spyOn(ingredientsApi, "searchIngredients").mockResolvedValue(makeIngredients("Egg"));
-    const addPantryItem = vi
-      .spyOn(pantryApi, "addPantryItem")
-      .mockResolvedValue(makePantryItem());
-
-    renderPage();
-    await addIngredient(user, "Egg");
-
-    expect(addPantryItem.mock.calls[0][0]).toBe("i1");
-  });
 });

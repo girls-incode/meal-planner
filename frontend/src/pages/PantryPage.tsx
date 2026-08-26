@@ -1,25 +1,20 @@
-import { Link } from "react-router-dom";
-import { IngredientSearch } from "@/components/IngredientSearch";
-import { IngredientChip } from "@/components/IngredientChip";
+import { PantryIngredients } from "@/components/PantryIngredients";
+import { LatestCategories } from "@/components/LatestCategories";
 import { EmptyState } from "@/components/EmptyState";
-import { usePantry, useAddPantryItem, useRemovePantryItem } from "@/hooks/usePantry";
+import { usePantry, useRemovePantryItem } from "@/hooks/usePantry";
 import { ApiError } from "@/api/client";
-import type { Ingredient } from "@/api/types";
 
-export function PantryPage() {
+interface PantryPageProps {
+  onFindRecipes: () => void;
+}
+
+export function PantryPage({ onFindRecipes }: PantryPageProps) {
   const { data: pantryItems = [], isLoading } = usePantry();
-  const addPantryItem = useAddPantryItem();
   const removePantryItem = useRemovePantryItem();
-
-  function handleAdd(ingredient: Ingredient) {
-    addPantryItem.mutate(ingredient.id);
-  }
 
   function handleRemove(itemId: string) {
     removePantryItem.mutate(itemId);
   }
-
-  const mutationError = addPantryItem.error ?? removePantryItem.error;
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-10">
@@ -30,14 +25,11 @@ export function PantryPage() {
         </p>
       </div>
 
-      <IngredientSearch
-        onAdd={handleAdd}
-        excludeIds={pantryItems.map((item) => item.ingredient.id)}
-      />
-
-      {mutationError && (
+      {removePantryItem.error && (
         <p role="alert" className="text-sm text-destructive">
-          {mutationError instanceof ApiError ? mutationError.message : "Something went wrong. Please try again."}
+          {removePantryItem.error instanceof ApiError
+            ? removePantryItem.error.message
+            : "Something went wrong. Please try again."}
         </p>
       )}
 
@@ -48,28 +40,14 @@ export function PantryPage() {
         />
       )}
 
-      {pantryItems.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Your ingredients</h2>
-          <div className="flex flex-wrap gap-2">
-            {pantryItems.map((item) => (
-              <IngredientChip
-                key={item.id}
-                label={item.ingredient.name}
-                onRemove={() => handleRemove(item.id)}
-                disabled={removePantryItem.isPending}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <PantryIngredients
+        items={pantryItems}
+        onRemove={handleRemove}
+        onFindRecipes={onFindRecipes}
+        isRemoving={removePantryItem.isPending}
+      />
 
-      <Link
-        to="/recipes"
-        className="mt-2 inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
-      >
-        Find recipes →
-      </Link>
+      <LatestCategories />
     </div>
   );
 }

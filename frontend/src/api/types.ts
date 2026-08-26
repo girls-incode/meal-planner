@@ -43,3 +43,8 @@ export interface RecipeMatchesPage {
   data: RecipeMatch[];
   nextCursor: string | null;
 }
+
+export interface CategoriesPage {
+  data: NamedEntity[];
+  nextCursor: string | null;
+}

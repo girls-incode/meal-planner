@@ -6,7 +6,12 @@ import { usePantry } from "@/hooks/usePantry";
 import { useScrollPagination } from "@/hooks/useScrollPagination";
 import { ApiError } from "@/api/client";
 
-export function RecipesPage() {
+interface RecipesPageProps {
+  ingredientIds: string[] | null;
+  searchVersion: number;
+}
+
+export function RecipesPage({ ingredientIds, searchVersion }: RecipesPageProps) {
   const {
     data: pantryItems = [],
     isLoading: isPantryLoading,
@@ -21,7 +26,7 @@ export function RecipesPage() {
     hasNextPage,
     isFetchingNextPage,
     isFetchNextPageError,
-  } = useRecipeMatches();
+  } = useRecipeMatches(ingredientIds ?? [], searchVersion);
 
   const recipes = matches?.pages.flatMap((page) => page.data) ?? [];
   const loadMoreRef = useScrollPagination({
@@ -54,6 +59,15 @@ export function RecipesPage() {
     );
   }
 
+  if (ingredientIds === null) {
+    return (
+      <RecipeEmptyState
+        title="Ready to find recipes"
+        description="Choose ingredients and select Find recipes to see your matches."
+      />
+    );
+  }
+
   if (isError && recipes.length === 0) {
     const errorDescription =
       recipeError instanceof ApiError
@@ -77,16 +91,13 @@ export function RecipesPage() {
       <RecipeEmptyState
         title="Nothing close enough yet"
         description="Try adding another ingredient or allowing recipes with more missing items."
-        actionLabel="Add ingredient"
       />
     );
   }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="mb-6 text-2xl font-bold text-foreground">
-        Recipes you can make
-      </h1>
+      <h1 className="mb-6 text-2xl font-bold text-foreground">Recipes you can make</h1>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {recipes.map((recipe) => (
           <RecipeCard key={recipe.id} recipe={recipe} />

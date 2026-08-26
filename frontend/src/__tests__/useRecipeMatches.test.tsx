@@ -1,37 +1,27 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useRecipeMatches } from "@/hooks/useRecipeMatches";
-import * as pantryApi from "@/api/pantry";
 import * as recipesApi from "@/api/recipes";
-import {
-  makeIngredient,
-  makeMatchesPage,
-  makePantry,
-  makePantryItem,
-  makeRecipeMatch,
-} from "@/test/factories";
+import { makeMatchesPage, makeRecipeMatch } from "@/test/factories";
 import { createTestQueryClient, queryWrapper } from "@/test/render";
 
 describe("useRecipeMatches", () => {
-  it("does not fetch matches when the pantry is empty", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue([]);
+  it("does not fetch matches without submitted ingredient IDs", () => {
     const getRecipeMatches = vi
       .spyOn(recipesApi, "getRecipeMatches")
       .mockResolvedValue(makeMatchesPage([]));
 
-    renderHook(() => useRecipeMatches(), { wrapper: queryWrapper() });
+    renderHook(() => useRecipeMatches([]), { wrapper: queryWrapper() });
 
-    await waitFor(() => expect(pantryApi.getPantry).toHaveBeenCalled());
     expect(getRecipeMatches).not.toHaveBeenCalled();
   });
 
-  it("fetches matches with the ingredient IDs from the pantry", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg", "Flour"));
+  it("fetches matches with the submitted ingredient IDs", async () => {
     const getRecipeMatches = vi
       .spyOn(recipesApi, "getRecipeMatches")
       .mockResolvedValue(makeMatchesPage([]));
 
-    renderHook(() => useRecipeMatches(), { wrapper: queryWrapper() });
+    renderHook(() => useRecipeMatches(["i1", "i2"]), { wrapper: queryWrapper() });
 
     await waitFor(() => {
       expect(getRecipeMatches).toHaveBeenCalledWith(["i1", "i2"]);
@@ -40,12 +30,11 @@ describe("useRecipeMatches", () => {
 
   it("returns the first page and its next cursor", async () => {
     const recipes = [makeRecipeMatch()];
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
     vi.spyOn(recipesApi, "getRecipeMatches").mockResolvedValue(
       makeMatchesPage(recipes, "cursor-abc"),
     );
 
-    const { result } = renderHook(() => useRecipeMatches(), { wrapper: queryWrapper() });
+    const { result } = renderHook(() => useRecipeMatches(["i1"]), { wrapper: queryWrapper() });
 
     await waitFor(() => {
       expect(result.current.data?.pages).toEqual([
@@ -55,13 +44,12 @@ describe("useRecipeMatches", () => {
   });
 
   it("requests the next page with the cursor returned by the previous page", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
     const getRecipeMatches = vi
       .spyOn(recipesApi, "getRecipeMatches")
       .mockResolvedValueOnce(makeMatchesPage([makeRecipeMatch({ id: "r1" })], "cursor-abc"))
       .mockResolvedValueOnce(makeMatchesPage([makeRecipeMatch({ id: "r2" })]));
 
-    const { result } = renderHook(() => useRecipeMatches(), { wrapper: queryWrapper() });
+    const { result } = renderHook(() => useRecipeMatches(["i1"]), { wrapper: queryWrapper() });
 
     await waitFor(() => expect(result.current.hasNextPage).toBe(true));
     await result.current.fetchNextPage();
@@ -75,26 +63,21 @@ describe("useRecipeMatches", () => {
     });
   });
 
-  it("produces a distinct cache key when ingredient IDs change, even with the same count", async () => {
+  it("produces a distinct cache key when submitted ingredient IDs change, even with the same count", async () => {
     const queryClient = createTestQueryClient();
     const getRecipeMatches = vi
       .spyOn(recipesApi, "getRecipeMatches")
       .mockResolvedValue(makeMatchesPage());
 
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg", "Flour"));
-
-    const { rerender } = renderHook(() => useRecipeMatches(), {
+    const { rerender } = renderHook(({ ingredientIds }: { ingredientIds: string[] }) => useRecipeMatches(ingredientIds), {
       wrapper: queryWrapper(queryClient),
+      initialProps: { ingredientIds: ["i1", "i2"] },
     });
 
     await waitFor(() => expect(getRecipeMatches).toHaveBeenCalledTimes(1));
 
-    // Swap both ingredients for different IDs, keeping the pantry size the same.
-    queryClient.setQueryData(["pantry"], [
-      makePantryItem({ id: "p3", ingredient: makeIngredient({ id: "i3", name: "Sugar" }) }),
-      makePantryItem({ id: "p4", ingredient: makeIngredient({ id: "i4", name: "Butter" }) }),
-    ]);
-    rerender();
+    // Swap both ingredient IDs while keeping the submitted list the same size.
+    rerender({ ingredientIds: ["i3", "i4"] });
 
     await waitFor(() => {
       // A second fetch proves the swap produced a new cache key rather than a stale hit.

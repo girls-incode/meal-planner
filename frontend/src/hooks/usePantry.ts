@@ -45,9 +45,8 @@ export function useAddPantryItem() {
       }
     },
     onSettled: () => {
-      // Reconcile with server after mutation completes (success or error)
+      // Reconcile the pantry with the server after mutation completes (success or error).
       queryClient.invalidateQueries({ queryKey: pantryQueryKey });
-      queryClient.invalidateQueries({ queryKey: ["recipe-matches"] });
     },
   });
 }
@@ -80,9 +79,8 @@ export function useRemovePantryItem() {
       }
     },
     onSettled: () => {
-      // Reconcile with server after mutation completes (success or error)
+      // Reconcile the pantry with the server after mutation completes (success or error).
       queryClient.invalidateQueries({ queryKey: pantryQueryKey });
-      queryClient.invalidateQueries({ queryKey: ["recipe-matches"] });
     },
   });
 }
