@@ -47,6 +47,9 @@ export function makeRecipeMatch(overrides: Partial<RecipeMatch> = {}): RecipeMat
     missingCount: 0,
     matchPercentage: 100,
     missingIngredients: [],
+    cuisine: "Asian",
+    category: { id: "category-1", name: "Dinner" },
+    author: { id: "author-1", name: "Chef Bob" },
     ...overrides,
   };
 }
@@ -65,7 +68,7 @@ export function makeRecipeDetail(overrides: Partial<RecipeDetail> = {}): RecipeD
     matchPercentage: 100,
     missingIngredients: [],
     cuisine: "Asian",
-    category: "Dinner",
+    category: { id: "category-1", name: "Dinner" },
     author: "Chef Bob",
     ingredients: [],
     ...overrides,

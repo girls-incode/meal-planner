@@ -6,6 +6,7 @@ import { Rating } from "@/components/Rating";
 import { RecipeTime } from "@/components/RecipeTime";
 import { RecipeImage } from "@/components/RecipeImage";
 import { RecipeIngredients } from "@/components/RecipeIngredients";
+import { RecipeMetadata } from "@/components/RecipeMetadata";
 import { useRecipe } from "@/hooks/useRecipe";
 
 export function RecipeDetailPage() {
@@ -45,6 +46,13 @@ export function RecipeDetailPage() {
       </div>
 
       <h1 className="text-2xl font-bold text-foreground">{recipe.title}</h1>
+
+      <RecipeMetadata
+        cuisine={recipe.cuisine}
+        category={recipe.category?.name ?? null}
+        author={recipe.author}
+        className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground"
+      />
 
       <Rating value={recipe.ratings} size="md" className="mt-2 gap-2" />
 

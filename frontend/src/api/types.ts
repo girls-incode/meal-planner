@@ -3,6 +3,11 @@ export interface Ingredient {
   name: string;
 }
 
+export interface NamedEntity {
+  id: string;
+  name: string;
+}
+
 export interface PantryItem {
   id: string;
   ingredient: Ingredient;
@@ -20,11 +25,12 @@ export interface RecipeMatch {
   missingCount: number;
   matchPercentage: number;
   missingIngredients: Ingredient[];
+  cuisine: string | null;
+  category: NamedEntity | null;
+  author: NamedEntity | null;
 }
 
-export interface RecipeDetail extends RecipeMatch {
-  cuisine: string | null;
-  category: string | null;
+export interface RecipeDetail extends Omit<RecipeMatch, "author"> {
   author: string | null;
   ingredients: Array<{
     ingredient: Ingredient;

@@ -39,6 +39,27 @@ describe("RecipeDetailPage", () => {
     expect(await screen.findByText("Chicken Fried Rice")).toBeInTheDocument();
   });
 
+  it("shows cuisine, category, and author names when available", async () => {
+    renderRecipe({
+      cuisine: "Italian",
+      category: { id: "category-1", name: "Pasta" },
+      author: "Chef Ada",
+    });
+
+    expect(await screen.findByText("Italian")).toBeInTheDocument();
+    expect(screen.getByText("Pasta")).toBeInTheDocument();
+    expect(screen.getByText("Chef Ada")).toBeInTheDocument();
+  });
+
+  it("hides metadata when every value is null", async () => {
+    renderRecipe({ cuisine: null, category: null, author: null });
+
+    await screen.findByText("Chicken Fried Rice");
+    expect(screen.queryByText("Cuisine:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Category:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Author:")).not.toBeInTheDocument();
+  });
+
   it("renders the total cook and prep time", async () => {
     renderRecipe({ prepTimeMinutes: 10, cookTimeMinutes: 20 });
 

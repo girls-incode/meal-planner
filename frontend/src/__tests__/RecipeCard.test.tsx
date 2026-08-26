@@ -44,4 +44,24 @@ describe("RecipeCard", () => {
 
     expect(screen.getByText("35 min")).toBeInTheDocument();
   });
+
+  it("shows cuisine, category, and author names when available", () => {
+    renderCard({
+      cuisine: "Italian",
+      category: { id: "category-1", name: "Pasta" },
+      author: { id: "author-1", name: "Chef Ada" },
+    });
+
+    expect(screen.getByText("Italian")).toBeInTheDocument();
+    expect(screen.getByText("Pasta")).toBeInTheDocument();
+    expect(screen.getByText("Chef Ada")).toBeInTheDocument();
+  });
+
+  it("hides recipe metadata that is null", () => {
+    renderCard({ cuisine: null, category: null, author: null });
+
+    expect(screen.queryByText("Cuisine:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Category:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Author:")).not.toBeInTheDocument();
+  });
 });

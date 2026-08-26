@@ -5,6 +5,7 @@ import { Rating } from "@/components/Rating";
 import { RecipeTime } from "@/components/RecipeTime";
 import { MissingIngredients } from "@/components/MissingIngredients";
 import { RecipeImage } from "@/components/RecipeImage";
+import { RecipeMetadata } from "@/components/RecipeMetadata";
 import type { RecipeMatch } from "@/api/types";
 
 interface RecipeCardProps {
@@ -21,6 +22,12 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
         </div>
         <CardContent className="flex flex-1 flex-col gap-3 px-4 pb-4 pt-4">
           <h3 className="text-base font-semibold leading-tight text-foreground line-clamp-2">{recipe.title}</h3>
+          <RecipeMetadata
+            cuisine={recipe.cuisine}
+            category={recipe.category?.name ?? null}
+            author={recipe.author?.name ?? null}
+            className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"
+          />
           <Rating value={recipe.ratings} />
           <RecipeTime
             prepTimeMinutes={recipe.prepTimeMinutes}
