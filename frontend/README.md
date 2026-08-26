@@ -1,281 +1,249 @@
-# Dinner Time — Frontend
+# Meal Planner — Frontend
 
-## Overview
+React, TypeScript, and Vite single-page application for finding recipes from
+an anonymous pantry. It consumes the Rails API in `../backend`, lets a user
+search and save ingredients, then ranks recipes by the selected ingredients.
 
-A React + TypeScript + Vite single-page application that helps home cooks discover recipes they can prepare **right now** with ingredients they already have at home. Users build an anonymous pantry, and the app ranks recipes by how close a match they are—fewest missing ingredients, highest match percentage. No login required; pantries are anonymous and session-local.
+## What it does
 
-Built as a Pennylane take-home challenge, consuming a Rails 8 API backend.
-
-## User Stories
-
-- **As a home cook**, I want to search for and add ingredients I have at home to my pantry, so the app knows what I can work with today.
-- **As a home cook**, I want to see a ranked list of recipes I can make with my current pantry (sorted by match %, with clear missing-count badges), so I can quickly decide what to cook tonight without extra shopping.
-- **As a home cook**, I want to open a recipe and see exactly which ingredients I already own vs. still need to buy, so I can make a focused shopping list if needed.
+- Creates a device-local anonymous pantry session; no sign-in is required.
+- Searches canonical ingredients with a 300 ms debounce.
+- Adds and removes pantry ingredients with optimistic updates.
+- Shows the latest ten recipe categories on the pantry page.
+- Runs an explicit, cursor-paginated recipe-match search.
+- Shows recipe details with pantry-aware owned and missing ingredients.
+- Preserves the current search and its cached result while moving between a
+  recipe list and recipe detail.
 
 ## Setup
 
 ### Prerequisites
-- **Node.js** with pnpm (or npm/yarn; this project uses pnpm)
-- **Backend running** on `http://localhost:3000`; CORS is already configured there for the frontend's dev server
 
-### Installation
+- Node.js and pnpm
+- The backend running locally, normally at `http://localhost:3000`
 
-1. **Install dependencies:**
-   ```bash
-   pnpm install
-   ```
+### Install and run
 
-2. **Configure the API base URL (optional):**
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` if the backend runs on a different port:
-   ```
-   VITE_API_BASE_URL=http://localhost:3000
-   ```
-   (Defaults to `http://localhost:3000` if the env var is unset.)
-
-3. **Start the dev server:**
-   ```bash
-   pnpm dev
-   ```
-   App runs at `http://localhost:5173` (Vite default).
-
-4. **Build for production:**
-   ```bash
-   pnpm build
-   ```
-
-## Architecture
-
-### Folder Structure
-
+```bash
+cd frontend
+pnpm install
+cp .env.example .env
+pnpm dev
 ```
+
+Vite serves the app at `http://localhost:5173` by default. Configure a
+different API in `.env` when needed:
+
+```dotenv
+VITE_API_BASE_URL=http://localhost:3000
+```
+
+If unset, `VITE_API_BASE_URL` defaults to `http://localhost:3000`.
+
+## Scripts
+
+```bash
+pnpm dev          # start Vite with HMR
+pnpm test         # run Vitest once
+pnpm test:watch   # run Vitest in watch mode
+pnpm lint         # run oxlint
+pnpm build        # type-check and create a production build
+pnpm preview      # serve the production build locally
+```
+
+## Docker deployment
+
+The included multi-stage `Dockerfile` builds the Vite bundle and serves it
+with unprivileged Nginx on port 8080. It caches fingerprinted assets for one
+year and sends unknown paths to `index.html`, which keeps client-side routes
+such as `/recipes/:id` working after a direct request or browser refresh.
+
+```bash
+docker build \
+  --build-arg VITE_API_BASE_URL=https://api.example.com \
+  -t meal-planner-frontend .
+
+docker run --rm -p 8080:8080 meal-planner-frontend
+```
+
+`VITE_API_BASE_URL` is compiled into the browser bundle, not read when the
+container starts. Build a new image for each API URL. Configure the backend's
+`FRONTEND_ORIGIN` with the public frontend origin so its CORS policy permits
+the browser requests.
+
+## Routes and state
+
+`AppRoutes` renders all routes inside `AppLayout` and
+`PantryWorkspace`. The workspace owns selected ingredient IDs and a
+`searchVersion`, so it stays mounted for both the recipe list and detail
+page. Returning from detail therefore does not reset the search.
+
+```mermaid
+flowchart TD
+  A[App] --> B[AppLayout<br/>Header + Outlet]
+  B --> C[PantryWorkspace<br/>Pantry mutations + recipe-search state]
+  C --> D["/<br/>PantryPage"]
+  C --> E["/recipes<br/>RecipesPage"]
+  C --> F["/recipes/:id<br/>RecipeDetailPage"]
+
+  D -->|Find recipes| E
+  E -->|Open RecipeCard| F
+  F -->|Back to recipes| E
+```
+
+The ingredient search is displayed on `/` and `/recipes`, but hidden on
+`/recipes/:id`. The workspace itself remains mounted in every case.
+
+## Main workflow
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant UI as PantryWorkspace
+  participant API as Rails API
+  participant Cache as React Query
+
+  User->>UI: Search and choose an ingredient
+  UI->>API: GET /api/v1/ingredients?q=…
+  API-->>UI: Canonical ingredients
+  UI->>Cache: Optimistically add pantry item
+  UI->>API: POST /api/v1/pantry_items
+  API-->>UI: 201 pantry item
+  UI->>Cache: Invalidate pantry
+
+  User->>UI: Find recipes
+  UI->>UI: Snapshot pantry IDs and increment searchVersion
+  UI->>API: POST /api/v1/recipes/matches
+  API-->>UI: data + nextCursor
+  UI->>Cache: Store result for IDs + version
+
+  User->>UI: Open a recipe
+  UI->>API: GET /api/v1/recipes/:id
+  API-->>UI: Recipe with owned/missing ingredients
+  User->>UI: Back to recipes
+  Cache-->>UI: Reuse current match result
+```
+
+Recipe matching happens only after **Find recipes** is pressed. Changing the
+pantry does not replace an already displayed match snapshot; pressing the
+button again deliberately creates a new search.
+
+## API integration
+
+`src/api/client.ts` is the shared fetch wrapper. It sends JSON, turns failed
+responses into `ApiError`, and includes `X-Pantry-Session` on every
+request. The client stores the session UUID in `localStorage` under
+`pantry_session_token`; clearing browser storage starts a new pantry.
+
+| Feature | Backend request | Purpose |
+| --- | --- | --- |
+| Ingredient search | `GET /api/v1/ingredients?q=` | Autocomplete suggestions |
+| Categories | `GET /api/v1/categories?limit=10` | Latest categories |
+| Pantry | `GET /api/v1/pantry` | Current anonymous pantry |
+| Add pantry item | `POST /api/v1/pantry_items` | Save an ingredient |
+| Remove pantry item | `DELETE /api/v1/pantry_items/:id` | Remove an ingredient |
+| Match recipes | `POST /api/v1/recipes/matches` | Ranked, cursor-paginated results |
+| Recipe detail | `GET /api/v1/recipes/:id` | Owned and missing ingredient display |
+
+The match request sends `ingredients` plus optional `max_missing`,
+`limit`, and `cursor` fields. The UI uses backend defaults for optional
+filters and follows `nextCursor` through the intersection-observer
+pagination hook.
+
+## Caching and mutations
+
+React Query caching is in memory only; a browser refresh starts a new cache.
+Mutable pantry data and an explicit match snapshot use different policies.
+
+```mermaid
+flowchart LR
+  P[usePantry<br/>key: pantry] -->|fresh for 60 seconds| PC[Pantry cache]
+  A[Add or remove pantry item] -->|optimistic update| PC
+  A -->|settled| I[Invalidate pantry]
+  I -->|active observer| P
+
+  S[Find recipes] --> V[Increment searchVersion]
+  V --> M[useRecipeMatches<br/>key: recipe-matches + sorted IDs + version]
+  M --> MC[Match-result cache<br/>fresh while retained in memory]
+  MC --> D[Recipe list or return from detail]
+```
+
+- Pantry queries have a 60-second `staleTime`. Add/remove mutations invalidate
+  them immediately so the client reconciles with the server.
+- Match queries include sorted IDs and `searchVersion` in the key. They use
+  `staleTime: Infinity`, so returning from detail reuses a retained result
+  instead of issuing another match request.
+- A new **Find recipes** action increments the version and creates a new query
+  for the current pantry selection.
+
+## Project structure
+
+Tests are co-located with the source they verify. Shared code remains at the
+top level; product code is organised by feature.
+
+```text
 src/
-├── api/                    # API fetch wrappers, one file per resource
-│   ├── client.ts           # fetch wrapper, ApiError, session token persistence
-│   ├── types.ts            # TypeScript interfaces (Ingredient, PantryItem, RecipeMatch, RecipeDetail)
-│   ├── ingredients.ts      # searchIngredients(query)
-│   ├── pantry.ts           # getPantry, addPantryItem, removePantryItem
-│   └── recipes.ts          # getRecipeMatches, getRecipe
-├── hooks/                  # React Query hooks wrapping the api/ layer
-│   ├── useIngredientSearch.ts
-│   ├── usePantry.ts        # usePantry, useAddPantryItem, useRemovePantryItem
-│   ├── useRecipeMatches.ts
-│   └── useRecipe.ts
-├── pages/                  # Route-level containers (own loading/error/empty states)
-│   ├── PantryPage.tsx      # "/"        — ingredient search, pantry management
-│   ├── RecipesPage.tsx     # "/recipes" — ranked recipe list
-│   └── RecipeDetailPage.tsx # "/recipes/:id" — recipe detail with owned/missing checklist
-├── components/             # Reusable presentational components
-│   ├── EmptyState.tsx
-│   ├── IngredientChip.tsx
-│   ├── IngredientSearch.tsx
-│   ├── MatchBadge.tsx
-│   ├── RecipeCard.tsx
-│   └── ui/                 # shadcn/ui primitives (badge, button, card, input, etc.)
-├── lib/utils.ts            # cn() utility for Tailwind + clsx
-├── App.tsx                 # Router setup, main nav header
-├── main.tsx                # Entry point, React Query client provider
-└── index.css               # Tailwind v4 CSS-first theme config
+├── App.tsx / App.test.tsx
+├── api/
+│   ├── client.ts / client.test.tsx    # fetch, session header, ApiError
+│   └── types.ts                       # API response types
+├── components/                        # shared UI and shared tests
+├── features/
+│   ├── categories/{api,components,hooks}
+│   ├── pantry/
+│   │   ├── api/
+│   │   ├── components/                # IngredientSearch, PantryWorkspace
+│   │   ├── hooks/                     # usePantry, useIngredientSearch
+│   │   └── pages/                     # PantryPage
+│   └── recipes/
+│       ├── api/
+│       ├── components/                # cards, metadata, image, ingredients
+│       ├── hooks/                     # matches, detail, infinite scroll
+│       └── pages/                     # RecipesPage, RecipeDetailPage
+├── layouts/AppLayout.tsx
+├── routes/AppRoutes.tsx
+├── test/                              # setup, render helpers, factories
+└── main.tsx                            # providers and browser router
 ```
-
-### Data Flow
-
-```
-api/*
-  ↓ (fetch wrappers with X-Pantry-Session persistence)
-  ↓
-hooks/*
-  ↓ (React Query queries/mutations with cache invalidation logic)
-  ↓
-pages/*
-  ↓ (route-level containers, loading/error/empty state UX)
-  ↓
-components/*
-  ↓ (presentational, receive data + callbacks via props)
-  ↓
-ui/*
-  ↓ (shadcn primitives)
-  ↓
-DOM
-```
-
-### React Query Caching & Invalidation
-
-**Query keys:**
-- `["pantry"]` — list of pantry items; invalidated on add/remove
-- `["recipe-matches", <sorted-ingredient-id-key>]` — recipe matches for current pantry; the key includes a sorted join of ingredient IDs to ensure distinct sets produce distinct cache entries (prevents stale data on ingredient swaps)
-- `["recipe", id]` — a specific recipe's detail, including owned/missing per ingredient
-- `["ingredient-search", query]` — autocomplete suggestions for the given search term
-
-**Invalidation strategy:**
-- `useAddPantryItem` and `useRemovePantryItem` mutations invalidate both `["pantry"]` and `["recipe-matches"]` prefix on success
-- This causes the pantry list and the ranked recipe list to refetch automatically whenever the user's pantry changes
-- No need for manual refetch calls or imperative state management
-
-## Workflows
-
-### Pantry Management (Add / Remove Ingredients)
 
 ```mermaid
-sequenceDiagram
-    participant User
-    participant IngredientSearch
-    participant API as api/ingredients<br/>api/pantry
-    participant Backend as Rails API
-
-    User->>IngredientSearch: type search term
-    IngredientSearch->>API: searchIngredients(query)
-    API->>Backend: GET /api/v1/ingredients?q=
-    Backend-->>API: 200 [{id, name}, ...]
-    API-->>IngredientSearch: matched ingredients (filtered for already-added)
-
-    User->>IngredientSearch: select an ingredient
-    IngredientSearch->>API: addPantryItem(ingredientId)
-    API->>Backend: POST /api/v1/pantry_items {ingredient_id}
-    Backend-->>API: 201 {id, ingredient, ...} OR 422 {error}
-    
-    alt Success
-        API-->>IngredientSearch: success
-        API->>API: invalidate ["pantry"], ["recipe-matches"]
-        IngredientSearch->>IngredientSearch: refetch pantry
-    else Failure (e.g. duplicate)
-        API-->>IngredientSearch: mutation.error = ApiError(422, "ingredient already in pantry")
-        IngredientSearch->>User: show error alert
-    end
-
-    User->>PantryPage: click remove on ingredient chip
-    PantryPage->>API: removePantryItem(pantryItemId)
-    API->>Backend: DELETE /api/v1/pantry_items/:id
-    Backend-->>API: 204 No Content
-    API->>API: invalidate ["pantry"], ["recipe-matches"]
-    PantryPage->>PantryPage: refetch pantry & recipe list
-```
-
-### Recipe Matching (Search Pantry, Fetch Ranked Matches)
-
-```mermaid
-sequenceDiagram
-    participant PantryPage
-    participant useRecipeMatches as useRecipeMatches<br/>(hook)
-    participant API as api/recipes
-    participant Backend as Rails API
-    participant RecipesPage
-
-    PantryPage->>PantryPage: pantry changes (add/remove via mutation)
-    PantryPage->>useRecipeMatches: (via React Query invalidation)
-
-    useRecipeMatches->>useRecipeMatches: derive ingredientIds from pantry items
-    useRecipeMatches->>useRecipeMatches: build sorted-join cache key
-    useRecipeMatches->>API: getRecipeMatches(ingredientIds)
-    
-    API->>Backend: POST /api/v1/recipes/matches {ingredients: [uuid, ...], max_missing?: 5}
-    Backend-->>API: 200 [{id, title, matchPercentage, missingCount, ...}, ...] OR 422 {error}
-    
-    alt Success
-        API-->>useRecipeMatches: recipes ranked by match% desc
-        useRecipeMatches-->>RecipesPage: data flows down
-        RecipesPage->>RecipesPage: render grid of RecipeCard
-    else Failure (invalid IDs)
-        API-->>useRecipeMatches: error state
-        RecipesPage->>RecipesPage: render error message
-    end
-```
-
-### Recipe Detail View (Owned vs. Missing Ingredients)
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant RecipesPage
-    participant RecipeDetailPage
-    participant API as api/recipes
-    participant Backend as Rails API
-
-    User->>RecipesPage: click a RecipeCard
-    RecipesPage->>RecipeDetailPage: navigate to /recipes/:id
-
-    RecipeDetailPage->>API: getRecipe(id)
-    API->>Backend: GET /api/v1/recipes/:id [+ X-Pantry-Session header]
-    Backend-->>API: 200 {id, title, ingredients: [{..., owned: true/false}, ...], ...} OR 404 {error}
-    
-    alt Success
-        API-->>RecipeDetailPage: recipe detail with ownership flags
-        RecipeDetailPage->>RecipeDetailPage: render ingredient checklist
-        RecipeDetailPage->>RecipeDetailPage: owned=true → ✓ icon, full opacity<br/>owned=false → ✗ icon, muted
-    else Not Found
-        API-->>RecipeDetailPage: error state
-        RecipeDetailPage->>RecipeDetailPage: render error message
-    end
+flowchart LR
+  API[api<br/>HTTP request functions] --> Hooks[hooks<br/>React Query policies]
+  Hooks --> Pages[pages<br/>route-level UI]
+  Components[components<br/>presentational UI] --> Pages
+  Pages --> Routes[routes<br/>composition]
 ```
 
 ## Testing
 
-### Test Pyramid
-
-**Unit & component tests (today):** Vitest + React Testing Library  
-- API error handling and JSON body message parsing
-- React Query hooks (query success/error, mutation invalidation)
-- Page-level user flows (search → add → remove ingredient, recipe matching, recipe detail rendering)
-- Individual components and their state management
-
-**End-to-end tests (planned, not yet built):**  
-Playwright specs (`@playwright/test` already installed, `e2e/` folder scaffolded) for future coverage of:
-1. **Happy path:** search → add 2–3 ingredients → view ranked recipe list → open a recipe → verify owned/missing checklist → remove an ingredient → confirm recipe list updates
-2. **Error handling:** attempt to add the same ingredient twice, verify inline error message with backend's actual error text
-3. **Edge cases:** empty pantry state, no-match state (all recipes have too many missing ingredients), loading states
-
-### Key Test Cases by Flow
-
-| User Flow | Test File(s) | Key Cases |
-|---|---|---|
-| Pantry add/remove | `PantryPage.test.tsx` | add success, remove success, mutation error displayed, empty-state guard, loading state |
-| Recipe matching | `useRecipeMatches.test.tsx` | correct POST body with ingredient IDs, empty-pantry disabled, cache-key correctness on ingredient swap |
-| Recipe detail | `RecipeDetailPage.test.tsx` | loading state, error/404 state, full render (title/times/author), owned/missing icon rendering, route param handling |
-| Pantry hooks | `usePantry.test.tsx` | query success, add/remove mutations invalidate both keys, error state population |
-| API error handling | `api-error.test.tsx` | parse backend `{error}` JSON body, fallback to generic message |
-| Existing coverage | `RecipesPage.test.tsx`, `RecipeCard.test.tsx`, `IngredientChip.test.tsx` | already present from scaffolding |
-
-### Running Tests
+The suite uses Vitest, React Testing Library, and jsdom. It covers shared API
+error handling, React Query hooks, pages, presentational components, and the
+recipe-list → detail → back-to-list regression.
 
 ```bash
-# Run tests once (CI mode)
 pnpm test
-
-# Run tests in watch mode
-pnpm test:watch
+pnpm lint
+pnpm build
 ```
 
-## Known Limitations / Future Improvements
+## Deployment
 
-- **No pagination UI:** The backend supports `limit` and `page` params on `/recipes/matches`, but the frontend always uses the backend defaults (50 recipes per page). A future enhancement could add pagination controls.
-- **No `max_missing` tolerance UI:** Users cannot adjust the "how many missing ingredients are acceptable?" threshold from the UI (backend default is 5). Could add a slider or dropdown to expose this.
-- **Unused recipe fields:** The backend's `GET /api/v1/recipes/:id` response includes `quantity`, `unit`, `preparation`, and `qualifier` for each ingredient line (parsed from the recipe), but these are not modeled in `src/api/types.ts` or displayed in the UI. Could extend the type and show formatted quantities (e.g., "1 lb chicken, diced, divided").
-- **Generic error messages for mutations:** Error messages shown to the user are parsed from the backend's `{error}` field if present, but not all HTTP error responses include that field. In edge cases, users see generic "Request to ... failed with 422" text. This is acceptable for an MVP but could be improved with more specific backend error formatting.
-- **No image handling for missing URLs:** Recipe images are rendered as-is; if a recipe has `imageUrl: null`, no fallback or placeholder is shown (the `<img>` is skipped entirely). Could add a gray placeholder card.
-- **Playwright e2e suite not built:** Scaffolding exists but specs are not written. See "End-to-end tests (planned, not yet built)" above.
+```bash
+cd /home/violeta/projects/pennylane/girls-incode
 
-## Architecture Rationale
+sudo docker build \
+  --build-arg VITE_API_BASE_URL=http://localhost:3000 \
+  -t meal-planner-frontend:test \
+  frontend
 
-- **React + TypeScript + Vite:** Modern, fast dev loop with HMR, type safety, and minimal config
-- **TanStack Query (react-query):** Handles caching, invalidation, and request deduplication without Redux or context boilerplate
-- **Tailwind CSS v4 (CSS-first):** Single source of truth for design tokens and utility classes; no separate `tailwind.config.js`
-- **shadcn/ui primitives:** Unstyled, accessible, composable base components; easy to restyle and extend
-- **Vitest + React Testing Library:** Fast tests, modern APIs, mocks at the module level (no Jest)
-- **Anonymous pantry sessions (no login):** Simpler UX, no backend user management needed; trade-off is that pantries are device-local (no sync across devices)
-- **Stateless recipe matching:** `POST /recipes/matches` takes ingredient IDs directly rather than reading from a server-side pantry, allowing matches to be computed without persistence and enabling client-side ingredient selection before saving to a pantry
+sudo docker run --rm -p 8080:8080 meal-planner-frontend:test
+```
 
-## Development
+## Current boundaries
 
-- **Linting:** `pnpm lint` (oxlint; no ESLint or Prettier config)
-- **Type checking:** Included in `pnpm build` (`tsc -b`); not a separate step
-- **Hot Module Replacement (HMR):** Automatic on `pnpm dev`; changes appear instantly
-
-## Contributing
-
-Familiarize yourself with:
-- The data flow diagram and test cases above
-- The React Query invalidation strategy (mutate → invalidate → refetch)
-- Existing patterns in `src/api/*`, `src/hooks/*`, `src/pages/*`, and `src/__tests__/*`
-- The `.env.example` setup for pointing to a different backend if needed
+- Pantry sessions are anonymous and local to one browser profile; there is no
+  login or cross-device synchronisation.
+- The UI does not currently expose category, `max_missing`, or match-limit
+  controls, although the API accepts them.
+- Recipe detail shows original ingredient text and ownership state; richer
+  parsed ingredient metadata is not displayed separately.
