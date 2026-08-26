@@ -3,6 +3,7 @@ import { IngredientSearch } from "@/components/IngredientSearch";
 import { IngredientChip } from "@/components/IngredientChip";
 import { EmptyState } from "@/components/EmptyState";
 import { usePantry, useAddPantryItem, useRemovePantryItem } from "@/hooks/usePantry";
+import { ApiError } from "@/api/client";
 import type { Ingredient } from "@/api/types";
 
 export function PantryPage() {
@@ -13,6 +14,12 @@ export function PantryPage() {
   function handleAdd(ingredient: Ingredient) {
     addPantryItem.mutate(ingredient.id);
   }
+
+  function handleRemove(itemId: string) {
+    removePantryItem.mutate(itemId);
+  }
+
+  const mutationError = addPantryItem.error ?? removePantryItem.error;
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-10">
@@ -27,6 +34,12 @@ export function PantryPage() {
         onAdd={handleAdd}
         excludeIds={pantryItems.map((item) => item.ingredient.id)}
       />
+
+      {mutationError && (
+        <p role="alert" className="text-sm text-destructive">
+          {mutationError instanceof ApiError ? mutationError.message : "Something went wrong. Please try again."}
+        </p>
+      )}
 
       {!isLoading && pantryItems.length === 0 && (
         <EmptyState
@@ -43,7 +56,7 @@ export function PantryPage() {
               <IngredientChip
                 key={item.id}
                 label={item.ingredient.name}
-                onRemove={() => removePantryItem.mutate(item.id)}
+                onRemove={() => handleRemove(item.id)}
                 disabled={removePantryItem.isPending}
               />
             ))}

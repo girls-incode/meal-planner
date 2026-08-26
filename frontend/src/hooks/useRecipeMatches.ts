@@ -5,9 +5,14 @@ import { usePantry } from "./usePantry";
 export function useRecipeMatches() {
   const { data: pantryItems } = usePantry();
 
+  const ingredientIds = (pantryItems ?? []).map((item) => item.ingredient.id);
+  // Stable, order-independent cache key so that distinct ingredient sets produce distinct cache entries
+  // (prevents the bug where swapping one ingredient for another with the same pantry size would show stale results)
+  const sortedIdsKey = [...ingredientIds].sort().join(",");
+
   return useQuery({
-    queryKey: ["recipe-matches", pantryItems?.length ?? 0],
-    queryFn: () => getRecipeMatches(),
-    enabled: (pantryItems?.length ?? 0) > 0,
+    queryKey: ["recipe-matches", sortedIdsKey],
+    queryFn: () => getRecipeMatches(ingredientIds),
+    enabled: ingredientIds.length > 0,
   });
 }

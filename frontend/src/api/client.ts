@@ -30,7 +30,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, `Request to ${path} failed with ${response.status}`);
+    let message = `Request to ${path} failed with ${response.status}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) {
+        message = body.error;
+      }
+    } catch {
+      // Fallback to generic message if response body is not JSON or doesn't contain error field
+    }
+    throw new ApiError(response.status, message);
   }
 
   if (response.status === 204) {

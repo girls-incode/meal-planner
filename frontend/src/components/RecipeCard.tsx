@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { ImageOff } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { MatchBadge } from "@/components/MatchBadge";
 import type { RecipeMatch } from "@/api/types";
@@ -8,22 +10,26 @@ interface RecipeCardProps {
 }
 
 export function RecipeCard({ recipe }: RecipeCardProps) {
+  const [imageLoadError, setImageLoadError] = useState(false);
   const totalTime = (recipe.prepTimeMinutes ?? 0) + (recipe.cookTimeMinutes ?? 0);
+  const hasValidImage = recipe.imageUrl && !imageLoadError;
 
   return (
     <Link to={`/recipes/${recipe.id}`} className="block">
       <Card className="overflow-hidden rounded-2xl border-border py-0 shadow-sm transition-shadow hover:shadow-md">
         <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
-          {recipe.imageUrl ? (
+          {hasValidImage ? (
             <img
-              src={recipe.imageUrl}
+              src={recipe.imageUrl!}
               alt={recipe.title}
               loading="lazy"
               className="size-full object-cover"
+              onError={() => setImageLoadError(true)}
             />
           ) : (
-            <div className="flex size-full items-center justify-center text-sm text-muted-foreground">
-              No image
+            <div className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground">
+              <ImageOff className="size-6" />
+              <span className="text-xs">No image</span>
             </div>
           )}
         </div>

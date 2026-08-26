@@ -1,11 +1,13 @@
 import { useParams } from "react-router-dom";
-import { Check, X } from "lucide-react";
+import { useState } from "react";
+import { Check, X, ImageOff } from "lucide-react";
 import { MatchBadge } from "@/components/MatchBadge";
 import { useRecipe } from "@/hooks/useRecipe";
 
 export function RecipeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: recipe, isLoading, isError } = useRecipe(id);
+  const [imageLoadError, setImageLoadError] = useState(false);
 
   if (isLoading) {
     return <div className="mx-auto max-w-3xl px-4 py-10 text-muted-foreground">Loading…</div>;
@@ -20,15 +22,24 @@ export function RecipeDetailPage() {
   }
 
   const totalTime = (recipe.prepTimeMinutes ?? 0) + (recipe.cookTimeMinutes ?? 0);
+  const hasValidImage = recipe.imageUrl && !imageLoadError;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      {recipe.imageUrl && (
+      {hasValidImage ? (
         <img
-          src={recipe.imageUrl}
+          src={recipe.imageUrl!}
           alt={recipe.title}
           className="mb-6 aspect-video w-full rounded-2xl object-cover"
+          onError={() => setImageLoadError(true)}
         />
+      ) : (
+        <div className="mb-6 flex aspect-video w-full items-center justify-center rounded-2xl bg-secondary">
+          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+            <ImageOff className="size-8" />
+            <span className="text-sm">Recipe image unavailable</span>
+          </div>
+        </div>
       )}
 
       <h1 className="text-2xl font-bold text-foreground">{recipe.title}</h1>
