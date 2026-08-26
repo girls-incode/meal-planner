@@ -3,6 +3,7 @@ import { RecipeEmptyState } from "@/components/RecipeEmptyState";
 import { Loader } from "@/components/Loader";
 import { useRecipeMatches } from "@/hooks/useRecipeMatches";
 import { usePantry } from "@/hooks/usePantry";
+import { useScrollPagination } from "@/hooks/useScrollPagination";
 import { ApiError } from "@/api/client";
 
 export function RecipesPage() {
@@ -16,9 +17,19 @@ export function RecipesPage() {
     isLoading,
     isError,
     error: recipeError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
   } = useRecipeMatches();
 
-  const recipes = matches?.data ?? [];
+  const recipes = matches?.pages.flatMap((page) => page.data) ?? [];
+  const loadMoreRef = useScrollPagination({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  });
 
   if (isPantryLoading) {
     return <Loader label="Loading pantry…" />;
@@ -43,7 +54,7 @@ export function RecipesPage() {
     );
   }
 
-  if (isError) {
+  if (isError && recipes.length === 0) {
     const errorDescription =
       recipeError instanceof ApiError
         ? recipeError.message
@@ -81,6 +92,20 @@ export function RecipesPage() {
           <RecipeCard key={recipe.id} recipe={recipe} />
         ))}
       </div>
+      {hasNextPage && (
+        <div ref={loadMoreRef} className="min-h-px">
+          {isFetchingNextPage && <Loader label="Loading more recipes…" />}
+          {isFetchNextPageError && (
+            <button
+              type="button"
+              onClick={() => fetchNextPage()}
+              className="mx-auto block cursor-pointer py-6 text-sm font-medium text-primary hover:text-primary-hover"
+            >
+              Try loading more recipes
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

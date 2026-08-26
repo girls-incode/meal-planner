@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { getRecipeMatches } from "@/api/recipes";
 import { usePantry } from "./usePantry";
 
@@ -10,9 +10,14 @@ export function useRecipeMatches() {
   // (prevents the bug where swapping one ingredient for another with the same pantry size would show stale results)
   const sortedIdsKey = [...ingredientIds].sort().join(",");
 
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["recipe-matches", sortedIdsKey],
-    queryFn: () => getRecipeMatches(ingredientIds),
+    queryFn: ({ pageParam }) =>
+      pageParam
+        ? getRecipeMatches(ingredientIds, { cursor: pageParam })
+        : getRecipeMatches(ingredientIds),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled: ingredientIds.length > 0,
   });
 }

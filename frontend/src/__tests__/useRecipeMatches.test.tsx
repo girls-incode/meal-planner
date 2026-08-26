@@ -38,7 +38,7 @@ describe("useRecipeMatches", () => {
     });
   });
 
-  it("returns the paginated envelope, including nextCursor", async () => {
+  it("returns the first page and its next cursor", async () => {
     const recipes = [makeRecipeMatch()];
     vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
     vi.spyOn(recipesApi, "getRecipeMatches").mockResolvedValue(
@@ -48,7 +48,30 @@ describe("useRecipeMatches", () => {
     const { result } = renderHook(() => useRecipeMatches(), { wrapper: queryWrapper() });
 
     await waitFor(() => {
-      expect(result.current.data).toEqual({ data: recipes, nextCursor: "cursor-abc" });
+      expect(result.current.data?.pages).toEqual([
+        { data: recipes, nextCursor: "cursor-abc" },
+      ]);
+    });
+  });
+
+  it("requests the next page with the cursor returned by the previous page", async () => {
+    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    const getRecipeMatches = vi
+      .spyOn(recipesApi, "getRecipeMatches")
+      .mockResolvedValueOnce(makeMatchesPage([makeRecipeMatch({ id: "r1" })], "cursor-abc"))
+      .mockResolvedValueOnce(makeMatchesPage([makeRecipeMatch({ id: "r2" })]));
+
+    const { result } = renderHook(() => useRecipeMatches(), { wrapper: queryWrapper() });
+
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+    await result.current.fetchNextPage();
+
+    expect(getRecipeMatches).toHaveBeenLastCalledWith(["i1"], { cursor: "cursor-abc" });
+    await waitFor(() => {
+      expect(result.current.data?.pages.flatMap((page) => page.data.map((recipe) => recipe.id))).toEqual([
+        "r1",
+        "r2",
+      ]);
     });
   });
 
