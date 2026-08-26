@@ -1,62 +1,36 @@
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { RecipeCard } from "@/components/RecipeCard";
+import { makeIngredients, makeRecipeMatch } from "@/test/factories";
+import { renderWithProviders } from "@/test/render";
 import type { RecipeMatch } from "@/api/types";
 
-function makeRecipe(overrides: Partial<RecipeMatch> = {}): RecipeMatch {
-  return {
-    id: "1",
-    title: "Golden Sweet Cornbread",
-    imageUrl: null,
-    ratings: 4.7,
-    cookTimeMinutes: 25,
-    prepTimeMinutes: 10,
-    matchedIngredients: 8,
-    requiredIngredientCount: 8,
-    missingCount: 0,
-    matchPercentage: 100,
-    missingIngredients: [],
-    ...overrides,
-  };
-}
-
-function renderCard(recipe: RecipeMatch) {
-  return render(
-    <MemoryRouter>
-      <RecipeCard recipe={recipe} />
-    </MemoryRouter>,
-  );
+function renderCard(overrides: Partial<RecipeMatch> = {}) {
+  return renderWithProviders(<RecipeCard recipe={makeRecipeMatch(overrides)} />);
 }
 
 describe("RecipeCard", () => {
   it("shows 'Ready to cook' for a full match", () => {
-    renderCard(makeRecipe({ matchPercentage: 100, missingCount: 0 }));
+    renderCard({ matchPercentage: 100, missingCount: 0 });
+
     expect(screen.getByText("Ready to cook")).toBeInTheDocument();
   });
 
   it("shows the missing ingredient count for a partial match", () => {
-    renderCard(makeRecipe({
+    renderCard({
       matchPercentage: 75,
       missingCount: 2,
-      missingIngredients: [
-        { id: "i1", name: "Milk" },
-        { id: "i2", name: "Butter" },
-      ],
-    }));
+      missingIngredients: makeIngredients("Milk", "Butter"),
+    });
+
     expect(screen.getByText(/Missing 2 ingredients/)).toBeInTheDocument();
   });
 
   it("shows missing ingredient names and limits the list to three", () => {
-    renderCard(makeRecipe({
+    renderCard({
       missingCount: 4,
-      missingIngredients: [
-        { id: "i1", name: "Milk" },
-        { id: "i2", name: "Butter" },
-        { id: "i3", name: "Flour" },
-        { id: "i4", name: "Eggs" },
-      ],
-    }));
+      missingIngredients: makeIngredients("Milk", "Butter", "Flour", "Eggs"),
+    });
 
     expect(screen.getByText("Milk")).toBeInTheDocument();
     expect(screen.getByText("Butter")).toBeInTheDocument();
@@ -66,7 +40,8 @@ describe("RecipeCard", () => {
   });
 
   it("renders the total cook time", () => {
-    renderCard(makeRecipe({ prepTimeMinutes: 10, cookTimeMinutes: 25 }));
+    renderCard({ prepTimeMinutes: 10, cookTimeMinutes: 25 });
+
     expect(screen.getByText("35 min")).toBeInTheDocument();
   });
 });

@@ -22,7 +22,7 @@ export interface RecipeMatch {
   missingIngredients: Ingredient[];
 }
 
-export interface RecipeDetail extends Omit<RecipeMatch, "missingIngredients"> {
+export interface RecipeDetail extends RecipeMatch {
   cuisine: string | null;
   category: string | null;
   author: string | null;
@@ -31,4 +31,9 @@ export interface RecipeDetail extends Omit<RecipeMatch, "missingIngredients"> {
     rawText: string;
     owned: boolean;
   }>;
+}
+
+export interface RecipeMatchesPage {
+  data: RecipeMatch[];
+  nextCursor: string | null;
 }

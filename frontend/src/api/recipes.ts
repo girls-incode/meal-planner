@@ -1,22 +1,22 @@
 import { apiClient } from "./client";
-import type { RecipeDetail, RecipeMatch } from "./types";
+import type { RecipeDetail, RecipeMatchesPage } from "./types";
 
 export interface RecipeMatchOptions {
   maxMissing?: number;
   limit?: number;
-  page?: number;
+  cursor?: string;
 }
 
 export function getRecipeMatches(
   ingredientIds: string[],
   options: RecipeMatchOptions = {},
-): Promise<RecipeMatch[]> {
+): Promise<RecipeMatchesPage> {
   const body: Record<string, unknown> = { ingredients: ingredientIds };
   if (options.maxMissing !== undefined) body.max_missing = options.maxMissing;
   if (options.limit !== undefined) body.limit = options.limit;
-  if (options.page !== undefined) body.page = options.page;
+  if (options.cursor !== undefined) body.cursor = options.cursor;
 
-  return apiClient.post<RecipeMatch[]>("/api/v1/recipes/matches", body);
+  return apiClient.post<RecipeMatchesPage>("/api/v1/recipes/matches", body);
 }
 
 export function getRecipe(id: string): Promise<RecipeDetail> {

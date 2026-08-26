@@ -27,19 +27,25 @@ export function RecipeTime({
         className,
       )}
     >
-      <span className="inline-flex items-center gap-1">
-        <Timer className={cn(iconClassName, "text-primary")} />
-        <span>Prep: {prepTimeMinutes === null ? "—" : `${prepTimeMinutes} min`}</span>
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <ChefHat className={cn(iconClassName, "text-primary")} />
-        <span>Cook: {cookTimeMinutes === null ? "—" : `${cookTimeMinutes} min`}</span>
-      </span>
-      <span className="inline-flex items-center gap-1 font-medium">
-        <Clock className={cn(iconClassName, "text-primary")} />
-        <span>Total:</span>
-        <span>{totalTimeLabel}</span>
-      </span>
+      {!!prepTimeMinutes && (
+        <span className="inline-flex items-center gap-1">
+          <Timer className={cn(iconClassName, "text-primary")} />
+          <span>Prep: {prepTimeMinutes} min</span>
+        </span>
+      )}
+      {!!cookTimeMinutes && (
+        <span className="inline-flex items-center gap-1">
+          <ChefHat className={cn(iconClassName, "text-primary")} />
+          <span>Cook: {cookTimeMinutes} min</span>
+        </span>
+      )}
+      {totalTimeLabel && (
+        <span className="inline-flex items-center gap-1 font-medium">
+          <Clock className={cn(iconClassName, "text-primary")} />
+          <span>Total:</span>
+          <span>{totalTimeLabel}</span>
+        </span>
+      )}
     </div>
   );
 }
