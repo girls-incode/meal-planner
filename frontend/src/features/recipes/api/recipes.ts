@@ -11,9 +11,9 @@ export function getRecipeMatches(
   ingredientIds: string[],
   options: RecipeMatchOptions = {},
 ): Promise<RecipeMatchesPage> {
-  return apiClient.post<RecipeMatchesPage>("/api/v1/recipes/matches", {
+  return apiClient.post<RecipeMatchesPage>("/api/v1/recipe-matches", {
     ingredients: ingredientIds,
-    max_missing: options.maxMissing,
+    maxMissing: options.maxMissing,
     limit: options.limit,
     cursor: options.cursor,
   });

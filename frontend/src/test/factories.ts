@@ -75,7 +75,7 @@ export function makeRecipeDetail(overrides: Partial<RecipeDetail> = {}): RecipeD
   };
 }
 
-/** The cursor-paginated envelope returned by POST /api/v1/recipes/matches. */
+/** The cursor-paginated envelope returned by POST /api/v1/recipe-matches. */
 export function makeMatchesPage(
   data: RecipeMatch[] = [makeRecipeMatch()],
   nextCursor: string | null = null,
