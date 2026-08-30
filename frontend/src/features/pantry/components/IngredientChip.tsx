@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface IngredientChipProps {
   label: string;
@@ -10,15 +11,17 @@ export function IngredientChip({ label, onRemove, disabled }: IngredientChipProp
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1.5 text-sm text-foreground">
       {label}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         aria-label={`Remove ${label}`}
         onClick={onRemove}
         disabled={disabled}
-        className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-border hover:text-foreground disabled:opacity-50"
+        className="rounded-full text-muted-foreground hover:text-foreground"
       >
         <X className="size-3.5" />
-      </button>
+      </Button>
     </span>
   );
 }

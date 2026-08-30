@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import type { Ingredient } from "@/api/types";
 
 interface MissingIngredientsProps {
@@ -15,17 +16,14 @@ export function MissingIngredients({ ingredients, count }: MissingIngredientsPro
       </p>
       <div className="flex flex-wrap gap-1">
         {ingredients.slice(0, 3).map((ingredient) => (
-          <span
-            key={ingredient.id}
-            className="inline-block rounded-full bg-accent/30 px-2 py-0.5 text-xs text-accent-foreground"
-          >
+          <Badge key={ingredient.id} variant="secondary" className="bg-accent/30 text-accent-foreground">
             {ingredient.name}
-          </span>
+          </Badge>
         ))}
         {ingredients.length > 3 && (
-          <span className="inline-block rounded-full bg-accent/30 px-2 py-0.5 text-xs text-accent-foreground">
+          <Badge variant="secondary" className="bg-accent/30 text-accent-foreground">
             +{ingredients.length - 3} more
-          </span>
+          </Badge>
         )}
       </div>
     </div>

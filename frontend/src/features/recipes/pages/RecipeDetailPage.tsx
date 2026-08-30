@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { MatchBadge } from "@/features/recipes/components/MatchBadge";
 import { Loader } from "@/components/Loader";
+import { Button } from "@/components/ui/button";
 import { Rating } from "@/features/recipes/components/Rating";
 import { RecipeTime } from "@/features/recipes/components/RecipeTime";
 import { RecipeImage } from "@/features/recipes/components/RecipeImage";
@@ -19,27 +20,24 @@ export function RecipeDetailPage() {
   }
 
   if (isError || !recipe) {
-    const errorMessage = isError && recipe === undefined
-      ? "We couldn't load this recipe."
-      : null;
-
     return (
       <div className="mx-auto max-w-3xl px-4 py-10 text-muted-foreground">
-        {errorMessage || "We couldn't load this recipe."}
+        We couldn't load this recipe.
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => navigate("/recipes")}
-        className="group mb-6 inline-flex cursor-pointer items-center gap-2 bg-transparent p-0 text-sm transition-colors"
+        className="group mb-6"
         aria-label="Back to recipes"
       >
-        <ArrowLeft className="size-4 text-muted-foreground transition-all group-hover:-translate-x-1 group-hover:text-foreground" />
-        <span className="text-muted-foreground transition-colors group-hover:text-foreground">Back to recipes</span>
-      </button>
+        <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" />
+        Back to recipes
+      </Button>
 
       <div className="mb-6 aspect-video w-full overflow-hidden rounded-2xl">
         <RecipeImage src={recipe.imageUrl} alt={recipe.title} />

@@ -1,4 +1,5 @@
 import { useCategories } from "@/features/categories/hooks/useCategories";
+import { Badge } from "@/components/ui/badge";
 
 export function LatestCategories() {
   const { data, isLoading, isError } = useCategories(10);
@@ -27,12 +28,9 @@ export function LatestCategories() {
       {data && (
         <div className="mt-3 flex flex-wrap gap-2">
           {data.data.map((category) => (
-            <span
-              key={category.id}
-              className="rounded-full border border-border bg-secondary px-3 py-1.5 text-sm text-foreground"
-            >
+            <Badge key={category.id} variant="outline" className="h-auto px-3 py-1.5 text-sm">
               {category.name}
-            </span>
+            </Badge>
           ))}
         </div>
       )}

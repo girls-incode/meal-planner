@@ -67,6 +67,20 @@ describe("App", () => {
     expect(addPantryItem.mock.calls[0][0]).toBe("i1");
   });
 
+  it("disables Find recipes while an ingredient is being added", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    vi.spyOn(categoriesApi, "getCategories").mockResolvedValue({ data: [], nextCursor: null });
+    vi.spyOn(ingredientsApi, "searchIngredients").mockResolvedValue([{ id: "i2", name: "Flour" }]);
+    vi.spyOn(pantryApi, "addPantryItem").mockReturnValue(new Promise(() => {}));
+
+    renderWithProviders(<App />);
+    await user.type(screen.getByPlaceholderText("Add an ingredient..."), "Flour");
+    await user.click(await screen.findByRole("button", { name: "Flour" }));
+
+    expect(screen.getByRole("button", { name: "Adding ingredient…" })).toBeDisabled();
+  });
+
   it("requests matches only after Find recipes is pressed", async () => {
     const user = userEvent.setup();
     vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));

@@ -8,7 +8,7 @@ search and save ingredients, then ranks recipes by the selected ingredients.
 
 - Creates a device-local anonymous pantry session; no sign-in is required.
 - Searches canonical ingredients with a 300 ms debounce.
-- Adds and removes pantry ingredients with optimistic updates.
+- Adds and removes pantry ingredients, reconciling with the server on settle.
 - Shows the latest ten recipe categories on the pantry page.
 - Runs an explicit, cursor-paginated recipe-match search.
 - Shows recipe details with pantry-aware owned and missing ingredients.
@@ -106,14 +106,13 @@ sequenceDiagram
   User->>UI: Search and choose an ingredient
   UI->>API: GET /api/v1/ingredients?q=…
   API-->>UI: Canonical ingredients
-  UI->>Cache: Optimistically add pantry item
-  UI->>API: POST /api/v1/pantry_items
+  UI->>API: POST /api/v1/pantry-items
   API-->>UI: 201 pantry item
-  UI->>Cache: Invalidate pantry
+  UI->>Cache: Invalidate pantry on settle
 
   User->>UI: Find recipes
   UI->>UI: Snapshot pantry IDs and increment searchVersion
-  UI->>API: POST /api/v1/recipes/matches
+  UI->>API: POST /api/v1/recipe-matches
   API-->>UI: data + nextCursor
   UI->>Cache: Store result for IDs + version
 
@@ -130,24 +129,27 @@ button again deliberately creates a new search.
 
 ## API integration
 
-`src/api/client.ts` is the shared fetch wrapper. It sends JSON, turns failed
-responses into `ApiError`, and includes `X-Pantry-Session` on every
-request. The client stores the session UUID in `localStorage` under
-`pantry_session_token`; clearing browser storage starts a new pantry.
+`src/api/client.ts` is the shared fetch wrapper. It sends and expects
+camelCase JSON, turns failed responses into `ApiError`, and includes
+`X-Pantry-Session` on every request. The client stores the session UUID in
+`localStorage` under `pantry_session_token`; clearing browser storage starts
+a new pantry.
 
 | Feature | Backend request | Purpose |
 | --- | --- | --- |
 | Ingredient search | `GET /api/v1/ingredients?q=` | Autocomplete suggestions |
-| Categories | `GET /api/v1/categories?limit=10` | Latest categories |
-| Pantry | `GET /api/v1/pantry` | Current anonymous pantry |
-| Add pantry item | `POST /api/v1/pantry_items` | Save an ingredient |
-| Remove pantry item | `DELETE /api/v1/pantry_items/:id` | Remove an ingredient |
-| Match recipes | `POST /api/v1/recipes/matches` | Ranked, cursor-paginated results |
+| Categories | `GET /api/v1/categories?limit=` | Latest categories |
+| Pantry | `GET /api/v1/pantry-items?limit=&cursor=` | Current anonymous pantry, fetched page by page |
+| Add pantry item | `POST /api/v1/pantry-items` | Save an ingredient |
+| Remove pantry item | `DELETE /api/v1/pantry-items/:id` | Remove an ingredient |
+| Match recipes | `POST /api/v1/recipe-matches` | Ranked, cursor-paginated results |
 | Recipe detail | `GET /api/v1/recipes/:id` | Owned and missing ingredient display |
 
-The match request sends `ingredients` plus optional `max_missing`,
-`limit`, and `cursor` fields. The UI uses backend defaults for optional
-filters and follows `nextCursor` through the intersection-observer
+`getPantry` transparently walks every `nextCursor` page (100 items at a
+time) and returns the full pantry as one array, so callers never see its
+pagination. The match request sends `ingredients` plus optional
+`maxMissing`, `limit`, and `cursor` fields. The UI uses backend defaults for
+optional filters and follows `nextCursor` through the intersection-observer
 pagination hook.
 
 ## Caching and mutations
@@ -158,8 +160,7 @@ Mutable pantry data and an explicit match snapshot use different policies.
 ```mermaid
 flowchart LR
   P[usePantry<br/>key: pantry] -->|fresh for 60 seconds| PC[Pantry cache]
-  A[Add or remove pantry item] -->|optimistic update| PC
-  A -->|settled| I[Invalidate pantry]
+  A[Add or remove pantry item] -->|settled| I[Invalidate pantry]
   I -->|active observer| P
 
   S[Find recipes] --> V[Increment searchVersion]
@@ -168,13 +169,32 @@ flowchart LR
   MC --> D[Recipe list or return from detail]
 ```
 
-- Pantry queries have a 60-second `staleTime`. Add/remove mutations invalidate
-  them immediately so the client reconciles with the server.
+- Pantry queries have a 60-second `staleTime`. Add/remove mutations are not
+  optimistic: the UI waits for the request to settle, then invalidates the
+  pantry query so the client refetches the server's state.
 - Match queries include sorted IDs and `searchVersion` in the key. They use
   `staleTime: Infinity`, so returning from detail reuses a retained result
   instead of issuing another match request.
 - A new **Find recipes** action increments the version and creates a new query
   for the current pantry selection.
+
+## Error handling
+
+Errors are handled at two levels:
+
+- `AppErrorBoundary` wraps the whole app in `main.tsx`. It catches otherwise
+  unhandled render/render-lifecycle errors, replacing the tree with a generic
+  "Something went wrong" screen and a **Try again** button that resets the
+  boundary.
+- `ApiErrorAlert` is a shared component for surfacing a failed request inline,
+  next to the UI that triggered it (for example, the pantry workspace and
+  pantry page). It reads `ApiError` from `src/api/client.ts` and renders its
+  message, falling back to a generic message for non-`ApiError` failures.
+
+`apiClient`'s shared `request` helper is the single place that turns a
+failed `fetch` into an `ApiError` (with `status`, and optional `code` and
+`requestId` parsed from the backend's error body), so every feature's API
+functions and hooks propagate the same error shape into `ApiErrorAlert`.
 
 ## Project structure
 
@@ -188,10 +208,14 @@ src/
 │   ├── client.ts / client.test.tsx    # fetch, session header, ApiError
 │   └── types.ts                       # API response types
 ├── components/                        # shared UI and shared tests
+│   ├── ApiErrorAlert.tsx              # inline ApiError display
+│   ├── AppErrorBoundary.tsx           # app-wide render error fallback
+│   ├── AppHeader.tsx, EmptyState.tsx, Loader.tsx
+│   └── ui/                            # button, card, badge, input primitives
 ├── features/
 │   ├── categories/{api,components,hooks}
 │   ├── pantry/
-│   │   ├── api/
+│   │   ├── api/                       # pantry.ts (items), ingredients.ts (search)
 │   │   ├── components/                # IngredientSearch, PantryWorkspace
 │   │   ├── hooks/                     # usePantry, useIngredientSearch
 │   │   └── pages/                     # PantryPage
@@ -243,7 +267,7 @@ sudo docker run --rm -p 8080:8080 meal-planner-frontend:test
 
 - Pantry sessions are anonymous and local to one browser profile; there is no
   login or cross-device synchronisation.
-- The UI does not currently expose category, `max_missing`, or match-limit
+- The UI does not currently expose category, `maxMissing`, or match-limit
   controls, although the API accepts them.
 - Recipe detail shows original ingredient text and ownership state; richer
   parsed ingredient metadata is not displayed separately.

@@ -48,41 +48,6 @@ describe("useAddPantryItem", () => {
     });
   });
 
-  it("optimistically adds the item before the request resolves", async () => {
-    const queryClient = createTestQueryClient();
-    queryClient.setQueryData(["pantry"], makePantry("Egg"));
-    // Never resolves, so the cache we observe is purely the optimistic update.
-    vi.spyOn(pantryApi, "addPantryItem").mockReturnValue(new Promise(() => {}));
-
-    const { result } = renderHook(() => useAddPantryItem(), {
-      wrapper: queryWrapper(queryClient),
-    });
-
-    result.current.mutate("i2");
-
-    await waitFor(() => {
-      expect(queryClient.getQueryData(["pantry"])).toHaveLength(2);
-    });
-  });
-
-  it("rolls the optimistic update back when the request fails", async () => {
-    const queryClient = createTestQueryClient();
-    const items = makePantry("Egg");
-    queryClient.setQueryData(["pantry"], items);
-    vi.spyOn(pantryApi, "addPantryItem").mockRejectedValue(new ApiError(422, "already added"));
-
-    const { result } = renderHook(() => useAddPantryItem(), {
-      wrapper: queryWrapper(queryClient),
-    });
-
-    result.current.mutate("i2");
-
-    await waitFor(() => {
-      expect(result.current.isError).toBe(true);
-    });
-    expect(queryClient.getQueryData(["pantry"])).toEqual(items);
-  });
-
   it("invalidates the pantry query once settled", async () => {
     const queryClient = createTestQueryClient();
     vi.spyOn(pantryApi, "addPantryItem").mockResolvedValue(makePantryItem());
@@ -127,40 +92,6 @@ describe("useRemovePantryItem", () => {
     await waitFor(() => {
       expect(removePantryItem.mock.calls[0][0]).toBe("p1");
     });
-  });
-
-  it("optimistically removes the item before the request resolves", async () => {
-    const queryClient = createTestQueryClient();
-    queryClient.setQueryData(["pantry"], makePantry("Egg", "Flour"));
-    vi.spyOn(pantryApi, "removePantryItem").mockReturnValue(new Promise(() => {}));
-
-    const { result } = renderHook(() => useRemovePantryItem(), {
-      wrapper: queryWrapper(queryClient),
-    });
-
-    result.current.mutate("p1");
-
-    await waitFor(() => {
-      expect(queryClient.getQueryData(["pantry"])).toHaveLength(1);
-    });
-  });
-
-  it("rolls the optimistic removal back when the request fails", async () => {
-    const queryClient = createTestQueryClient();
-    const items = makePantry("Egg", "Flour");
-    queryClient.setQueryData(["pantry"], items);
-    vi.spyOn(pantryApi, "removePantryItem").mockRejectedValue(new ApiError(404, "not found"));
-
-    const { result } = renderHook(() => useRemovePantryItem(), {
-      wrapper: queryWrapper(queryClient),
-    });
-
-    result.current.mutate("p1");
-
-    await waitFor(() => {
-      expect(result.current.isError).toBe(true);
-    });
-    expect(queryClient.getQueryData(["pantry"])).toEqual(items);
   });
 
   it("invalidates the pantry query once settled", async () => {

@@ -1,6 +1,7 @@
 import { RecipeCard } from "@/features/recipes/components/RecipeCard";
 import { RecipeEmptyState } from "@/features/recipes/components/RecipeEmptyState";
 import { Loader } from "@/components/Loader";
+import { Button } from "@/components/ui/button";
 import { usePantryWorkspace } from "@/features/pantry/context";
 import { usePantry } from "@/features/pantry/hooks/usePantry";
 import { useRecipeMatches } from "@/features/recipes/hooks/useRecipeMatches";
@@ -12,9 +13,13 @@ interface RecipesPageProps {
   searchVersion?: number;
 }
 
-export function RecipesPage({ ingredientIds, searchVersion }: RecipesPageProps) {
+export function RecipesPage({
+  ingredientIds,
+  searchVersion,
+}: RecipesPageProps) {
   const workspace = usePantryWorkspace();
-  const selectedIngredientIds = ingredientIds ?? workspace?.ingredientIds ?? null;
+  const selectedIngredientIds =
+    ingredientIds ?? workspace?.ingredientIds ?? null;
   const selectedSearchVersion = searchVersion ?? workspace?.searchVersion ?? 0;
   const {
     data: pantryItems = [],
@@ -58,7 +63,6 @@ export function RecipesPage({ ingredientIds, searchVersion }: RecipesPageProps) 
       <RecipeEmptyState
         title="Your kitchen is empty"
         description="Add a few ingredients you have and we'll find recipes you can make."
-        actionLabel="Add ingredients"
       />
     );
   }
@@ -101,7 +105,9 @@ export function RecipesPage({ ingredientIds, searchVersion }: RecipesPageProps) 
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="mb-6 text-2xl font-bold text-foreground">Recipes you can make</h1>
+      <h1 className="mb-6 text-2xl font-bold text-foreground">
+        Recipes you can make
+      </h1>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {recipes.map((recipe) => (
           <RecipeCard key={recipe.id} recipe={recipe} />
@@ -111,13 +117,14 @@ export function RecipesPage({ ingredientIds, searchVersion }: RecipesPageProps) 
         <div ref={loadMoreRef} className="min-h-px">
           {isFetchingNextPage && <Loader label="Loading more recipes…" />}
           {isFetchNextPageError && (
-            <button
+            <Button
               type="button"
+              variant="link"
               onClick={() => fetchNextPage()}
-              className="mx-auto block cursor-pointer py-6 text-sm font-medium text-primary hover:text-primary-hover"
+              className="mx-auto block py-6"
             >
               Try loading more recipes
-            </button>
+            </Button>
           )}
         </div>
       )}

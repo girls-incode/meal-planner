@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -29,13 +30,9 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
         <main className="mx-auto flex min-h-screen max-w-xl flex-col items-start justify-center gap-4 px-4">
           <h1 className="text-2xl font-bold text-foreground">Something went wrong</h1>
           <p className="text-muted-foreground">Please try again. If the issue continues, refresh the page.</p>
-          <button
-            type="button"
-            onClick={this.handleRetry}
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
-          >
+          <Button type="button" onClick={this.handleRetry}>
             Try again
-          </button>
+          </Button>
         </main>
       );
     }

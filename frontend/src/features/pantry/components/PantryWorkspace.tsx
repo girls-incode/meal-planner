@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ApiError } from "@/api/client";
+import { ApiErrorAlert } from "@/components/ApiErrorAlert";
 import type { Ingredient } from "@/api/types";
 import { IngredientSearch } from "@/features/pantry/components/IngredientSearch";
 import { PantryIngredients } from "@/features/pantry/components/PantryIngredients";
@@ -38,6 +38,7 @@ export function PantryWorkspace() {
   const context: PantryWorkspaceContext = {
     ingredientIds: recipeSearch?.ingredientIds ?? null,
     searchVersion: recipeSearch?.version ?? 0,
+    isAdding: addPantryItem.isPending,
     onFindRecipes: handleFindRecipes,
   };
 
@@ -55,13 +56,12 @@ export function PantryWorkspace() {
               items={pantryItems}
               onRemove={handleRemove}
               onFindRecipes={handleFindRecipes}
+              isAdding={addPantryItem.isPending}
               isRemoving={removePantryItem.isPending}
             />
           )}
           {mutationError && (
-            <p role="alert" className="mt-2 text-sm text-destructive">
-              {mutationError instanceof ApiError ? mutationError.message : "Something went wrong. Please try again."}
-            </p>
+            <ApiErrorAlert error={mutationError} className="mt-2" />
           )}
         </div>
       )}

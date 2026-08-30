@@ -1,9 +1,9 @@
 import { LatestCategories } from "@/features/categories/components/LatestCategories";
 import { PantryIngredients } from "@/features/pantry/components/PantryIngredients";
 import { usePantryWorkspace } from "@/features/pantry/context";
+import { ApiErrorAlert } from "@/components/ApiErrorAlert";
 import { EmptyState } from "@/components/EmptyState";
 import { usePantry, useRemovePantryItem } from "@/features/pantry/hooks/usePantry";
-import { ApiError } from "@/api/client";
 
 interface PantryPageProps {
   onFindRecipes?: () => void;
@@ -27,13 +27,7 @@ export function PantryPage({ onFindRecipes }: PantryPageProps) {
         </p>
       </div>
 
-      {removePantryItem.error && (
-        <p role="alert" className="text-sm text-destructive">
-          {removePantryItem.error instanceof ApiError
-            ? removePantryItem.error.message
-            : "Something went wrong. Please try again."}
-        </p>
-      )}
+      {removePantryItem.error && <ApiErrorAlert error={removePantryItem.error} />}
 
       {!isLoading && pantryItems.length === 0 && (
         <EmptyState
@@ -46,6 +40,7 @@ export function PantryPage({ onFindRecipes }: PantryPageProps) {
         items={pantryItems}
         onRemove={handleRemove}
         onFindRecipes={onFindRecipes ?? workspace?.onFindRecipes ?? (() => {})}
+        isAdding={workspace?.isAdding}
         isRemoving={removePantryItem.isPending}
       />
 

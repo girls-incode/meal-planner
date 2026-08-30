@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { useIngredientSearch } from "@/features/pantry/hooks/useIngredientSearch";
 import type { Ingredient } from "@/api/types";
 
@@ -11,8 +12,11 @@ interface IngredientSearchProps {
 
 export function IngredientSearch({ onAdd, excludeIds = [] }: IngredientSearchProps) {
   const [query, setQuery] = useState("");
-  const { data: results = [], isFetching } = useIngredientSearch(query);
-  const suggestions = results.filter((ingredient) => !excludeIds.includes(ingredient.id));
+  const { data: results = [], isFetching, isCurrentQuery } = useIngredientSearch(query);
+  const isSearching = isFetching || !isCurrentQuery;
+  const suggestions = isCurrentQuery
+    ? results.filter((ingredient) => !excludeIds.includes(ingredient.id))
+    : [];
 
   function handleSelect(ingredient: Ingredient) {
     onAdd(ingredient);
@@ -33,21 +37,22 @@ export function IngredientSearch({ onAdd, excludeIds = [] }: IngredientSearchPro
       </div>
       {query.trim().length > 0 && (
         <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-border bg-card shadow-md">
-          {isFetching && (
+          {isSearching && (
             <li className="px-3 py-2 text-sm text-muted-foreground">Searching…</li>
           )}
-          {!isFetching && suggestions.length === 0 && (
+          {!isSearching && suggestions.length === 0 && (
             <li className="px-3 py-2 text-sm text-muted-foreground">No ingredients found</li>
           )}
           {suggestions.map((ingredient) => (
             <li key={ingredient.id}>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={() => handleSelect(ingredient)}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-secondary"
+                className="block w-full justify-start rounded-none px-3 py-2 text-left text-sm font-normal"
               >
                 {ingredient.name}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

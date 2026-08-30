@@ -14,9 +14,15 @@ export function useIngredientSearch(query: string) {
     return () => clearTimeout(timer);
   }, [query]);
 
-  return useQuery({
+  const ingredientQuery = useQuery({
     queryKey: ["ingredient-search", debouncedQuery],
     queryFn: () => searchIngredients(debouncedQuery),
     enabled: debouncedQuery.trim().length > 0,
   });
+
+  return {
+    data: ingredientQuery.data,
+    isFetching: ingredientQuery.isFetching,
+    isCurrentQuery: debouncedQuery === query,
+  };
 }

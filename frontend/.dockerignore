@@ -1,16 +1,38 @@
+# Build artifacts and dependencies (will be rebuilt in container)
 node_modules
 dist
 coverage
 
+# Environment files (use ARG/ENV at build time instead)
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
 
+# Version control and OS files
 .git
 .gitignore
 .DS_Store
+
+# Log files
 *.log
 pnpm-debug.log*
 
+# Docker and CI/CD files (not needed in image)
 Dockerfile
+docker-compose.yml
 .dockerignore
+.github
+.gitlab-ci.yml
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+.vim
+
+# Test and development files
+**/*.test.tsx
+**/*.test.ts
+vitest.config.ts

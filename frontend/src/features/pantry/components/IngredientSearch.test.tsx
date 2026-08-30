@@ -55,6 +55,20 @@ describe("IngredientSearch", () => {
     expect(input().value).toBe("");
   });
 
+  it("hides stale suggestions while the next query is debouncing", async () => {
+    vi.spyOn(ingredientsApi, "searchIngredients").mockResolvedValue(makeIngredients("Egg"));
+
+    const { user } = renderSearch();
+    await user.type(input(), "egg");
+    expect(await screen.findByRole("button", { name: "Egg" })).toBeInTheDocument();
+
+    await user.clear(input());
+    await user.type(input(), "flour");
+
+    expect(screen.getByText("Searching…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Egg" })).not.toBeInTheDocument();
+  });
+
   it("hides ingredients listed in excludeIds", async () => {
     // makeIngredients assigns ids i1 and i2 in order.
     vi.spyOn(ingredientsApi, "searchIngredients").mockResolvedValue(

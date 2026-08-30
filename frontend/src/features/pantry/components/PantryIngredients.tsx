@@ -1,10 +1,12 @@
 import { IngredientChip } from "@/features/pantry/components/IngredientChip";
+import { Button } from "@/components/ui/button";
 import type { PantryItem } from "@/api/types";
 
 interface PantryIngredientsProps {
   items: PantryItem[];
   onRemove: (itemId: string) => void;
   onFindRecipes: () => void;
+  isAdding?: boolean;
   isRemoving?: boolean;
   className?: string;
 }
@@ -13,6 +15,7 @@ export function PantryIngredients({
   items,
   onRemove,
   onFindRecipes,
+  isAdding = false,
   isRemoving = false,
   className,
 }: PantryIngredientsProps) {
@@ -34,14 +37,15 @@ export function PantryIngredients({
         </div>
       )}
 
-      <button
+      <Button
         type="button"
         onClick={onFindRecipes}
-        disabled={items.length === 0}
-        className="mt-6 inline-flex w-full cursor-pointer items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={items.length === 0 || isAdding}
+        size="lg"
+        className="mt-6 w-full"
       >
-        Find recipes →
-      </button>
+        {isAdding ? "Adding ingredient…" : "Find recipes →"}
+      </Button>
     </section>
   );
 }
