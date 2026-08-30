@@ -1,0 +1,419 @@
+---
+openapi: 3.0.1
+info:
+  title: API V1
+  version: v1
+paths:
+  "/api/v1/categories":
+    get:
+      summary: List recipe categories
+      tags:
+      - Categories
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: categories found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                      required:
+                      - id
+                      - name
+                  nextCursor:
+                    type: string
+                    nullable: true
+                required:
+                - data
+                - nextCursor
+  "/api/v1/ingredients":
+    get:
+      summary: Search ingredients
+      tags:
+      - Ingredients
+      parameters:
+      - name: q
+        in: query
+        required: false
+        description: Search term to filter ingredients by name
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Number of ingredients to return (1-20; default 20)
+        schema:
+          type: integer
+      - name: cursor
+        in: query
+        required: false
+        description: Opaque cursor from the prior response
+        schema:
+          type: string
+      responses:
+        '200':
+          description: legacy percentage-prefixed ingredients are not returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                      required:
+                      - id
+                      - name
+                  nextCursor:
+                    type: string
+                    nullable: true
+                required:
+                - data
+                - nextCursor
+  "/api/v1/pantry-items":
+    get:
+      summary: List the current pantry items
+      tags:
+      - Pantry Items
+      parameters:
+      - name: X-Pantry-Session
+        in: header
+        required: true
+        description: Client-generated UUID identifying the anonymous pantry session
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Number of items to return (1-100; default 20)
+        schema:
+          type: integer
+      - name: cursor
+        in: query
+        required: false
+        description: Opaque cursor from the prior response
+        schema:
+          type: string
+      responses:
+        '200':
+          description: pantry items returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  nextCursor:
+                    type: string
+                    nullable: true
+                required:
+                - data
+                - nextCursor
+    post:
+      summary: Add an ingredient to the pantry
+      tags:
+      - Pantry Items
+      parameters:
+      - name: X-Pantry-Session
+        in: header
+        required: true
+        description: Client-generated UUID identifying the anonymous pantry session
+        schema:
+          type: string
+      responses:
+        '201':
+          description: pantry item created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  ingredient:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - ingredientId
+              properties:
+                ingredientId:
+                  type: string
+                  format: uuid
+                  description: ID of the ingredient to add
+        required: true
+        description: Pantry item to create
+  "/api/v1/pantry-items/{id}":
+    delete:
+      summary: Remove an ingredient from the pantry
+      tags:
+      - Pantry Items
+      parameters:
+      - name: X-Pantry-Session
+        in: header
+        required: true
+        description: Client-generated UUID identifying the anonymous pantry session
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        description: Pantry item ID
+        schema:
+          type: string
+      responses:
+        '204':
+          description: pantry item removed
+  "/api/v1/recipe-matches":
+    post:
+      summary: Match recipes against selected ingredients
+      tags:
+      - Recipes
+      parameters: []
+      responses:
+        '200':
+          description: matching recipes returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        imageUrl:
+                          type: string
+                          nullable: true
+                        ratings:
+                          type: number
+                          nullable: true
+                        cookTimeMinutes:
+                          type: integer
+                          nullable: true
+                        prepTimeMinutes:
+                          type: integer
+                          nullable: true
+                        cuisine:
+                          type: string
+                          nullable: true
+                        category:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                        author:
+                          type: object
+                          nullable: true
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                        matchedIngredients:
+                          type: integer
+                        requiredIngredientCount:
+                          type: integer
+                        missingCount:
+                          type: integer
+                        matchPercentage:
+                          type: number
+                        missingIngredients:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                              name:
+                                type: string
+                  nextCursor:
+                    type: string
+                    nullable: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - ingredients
+              properties:
+                ingredients:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  minItems: 1
+                  maxItems: 100
+                maxMissing:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                categoryId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                cursor:
+                  type: string
+                  nullable: true
+  "/api/v1/recipes/{id}":
+    get:
+      summary: Show a recipe with its ingredients
+      tags:
+      - Recipes
+      parameters:
+      - name: X-Pantry-Session
+        in: header
+        required: true
+        description: Client-generated UUID identifying the anonymous pantry session
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        description: Recipe ID
+        schema:
+          type: string
+      responses:
+        '200':
+          description: recipe found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  imageUrl:
+                    type: string
+                    nullable: true
+                  ratings:
+                    type: number
+                    nullable: true
+                  cookTimeMinutes:
+                    type: integer
+                    nullable: true
+                  prepTimeMinutes:
+                    type: integer
+                    nullable: true
+                  cuisine:
+                    type: string
+                    nullable: true
+                  category:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                  author:
+                    type: string
+                    nullable: true
+                  requiredIngredientCount:
+                    type: integer
+                  ingredients:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ingredient:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                        rawText:
+                          type: string
+                          nullable: true
+                        owned:
+                          type: boolean
+                  missingIngredients:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+        '404':
+          description: recipe not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+servers:
+- url: http://{defaultHost}
+  variables:
+    defaultHost:
+      default: 127.0.0.1:3000

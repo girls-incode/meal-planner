@@ -1,0 +1,13 @@
+{
+    "[ruby]": {
+        "editor.defaultFormatter": "Shopify.ruby-lsp",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.rubocop": "explicit"
+        }
+    },
+    "ruby.lsp.rubyVersionManager": "bundler",
+    "ruby.linter": "rubocop",
+    "ruby.rubocop.useBundler": true,
+    "ruby.rubocop.configFilePath": "../../rubocop.yml"
+}
