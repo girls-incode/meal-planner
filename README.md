@@ -129,4 +129,3 @@ pnpm lint
 pnpm build
 ```
 
-See the component READMEs for API, deployment, and implementation details.
