@@ -83,14 +83,57 @@ describes how the UI uses it.
 
 ## Run locally
 
-The quickest way to start the full stack is Docker Compose:
+### Docker Compose
+
+From the repository root, build and start the full development stack:
 
 ```bash
 docker compose up --build
 ```
 
-This starts PostgreSQL, the Rails API at `http://localhost:3000`, and the Vite
-frontend at `http://localhost:5173`.
+Compose starts PostgreSQL, then creates and migrates the development database
+and imports the bundled recipe catalogue before starting Rails. On the first
+run, wait for the backend log to include:
+
+```text
+Listening on http://0.0.0.0:3000
+```
+
+The services are then available at:
+
+| Service | URL |
+| --- | --- |
+| Frontend (Vite) | `http://localhost:5173` |
+| Backend API (Rails) | `http://localhost:3000/api/v1` |
+| PostgreSQL | `localhost:5432` |
+
+For example, confirm that the imported catalogue is available with:
+
+```bash
+curl 'http://127.0.0.1:3000/api/v1/ingredients?q=honey'
+curl 'http://127.0.0.1:3000/api/v1/categories?limit=1'
+```
+
+Use a second terminal for container status and backend logs:
+
+```bash
+docker compose ps
+docker compose logs --tail=200 backend
+```
+
+Stop the stack without removing the PostgreSQL data volume:
+
+```bash
+docker compose down
+```
+
+If Docker reports that access to `/var/run/docker.sock` is denied after you
+have been added to the `docker` group, open a new terminal session and run the
+command again.
+
+The backend source is bind-mounted into the container for development. Its
+startup command removes a stale Rails PID file before booting, so normal
+container restarts do not require manual cleanup.
 
 To run the applications directly, start PostgreSQL first and use two terminals:
 
@@ -132,4 +175,3 @@ pnpm test
 pnpm lint
 pnpm build
 ```
-

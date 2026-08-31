@@ -58,6 +58,21 @@ The API is served at `http://localhost:3000/api/v1`. A pantry is identified
 by an `X-Pantry-Session` request header containing a client-generated UUID.
 There are no user accounts; sessions are anonymous.
 
+### Docker development
+
+From the repository root, start the backend together with PostgreSQL (and the
+frontend):
+
+```bash
+docker compose up --build
+```
+
+After PostgreSQL passes its health check, Compose removes any stale Rails PID,
+creates and migrates the development database, imports the bundled catalogue,
+and starts Rails at `http://localhost:3000`. The backend source is bind-mounted
+for development, and the development image starts Rails through `bundle exec`
+so it uses the image's installed Gemfile dependencies.
+
 ### Docker image
 
 The production Dockerfile builds a multi-stage Rails image with only runtime
@@ -452,7 +467,7 @@ authorless duplicate titles still collide) that makes the import upsertable.
 
 ## Data ingestion
 
-`RecipeSeeder` remains the compatibility entry point; `RecipeImport::Importer` owns the import workflow. It streams the source twice and persists batches of 500 records rather than issuing a query per ingredient line. Re-running it replaces each imported recipe's join rows and refreshes the canonical-ID projection, so parsing and normalization changes repair existing imports.
+`RecipeSeeder` remains the compatibility entry point; `RecipeImport::Importer` owns the import workflow. It streams the source twice and persists batches of 500 records rather than issuing a query per ingredient line. Its JSON-array reader tracks quoted strings and escapes, so escaped quotes inside source fields do not break record boundaries. Re-running it replaces each imported recipe's join rows and refreshes the canonical-ID projection, so parsing and normalization changes repair existing imports.
 
 ### Ingestion pipeline
 

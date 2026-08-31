@@ -40,6 +40,18 @@ VITE_API_BASE_URL=http://localhost:3000
 
 If unset, `VITE_API_BASE_URL` defaults to `http://localhost:3000`.
 
+### Docker development
+
+From the repository root, start the complete development stack:
+
+```bash
+docker compose up --build
+```
+
+Compose starts Vite at `http://localhost:5173` and points the browser bundle
+at the Rails API on `http://localhost:3000`. The frontend `src` and `public`
+directories are bind-mounted, so edits reload through Vite's HMR server.
+
 ## Scripts
 
 ```bash
