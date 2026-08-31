@@ -8,6 +8,7 @@ ingredients and rating.
 <img src="./images/meal-planner.png" width="60%"/>
 <img src="./images/meal-planner-1.png" width="60%"/>
 <img src="./images/meal-planner-2.png" width="60%"/>
+<img src="./images/meal-planner-3.png" width="60%"/>
 
 ## Application
 
