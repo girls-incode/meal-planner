@@ -10,6 +10,12 @@ RSpec.describe RecipeImport::JsonArrayStream do
     expect(records).to eq([ { "title" => "one" }, { "title" => "two" } ])
   end
 
+  it "streams strings containing escaped quotes" do
+    records = described_class.each(StringIO.new('[{"title":"1/2\\\" coins"},{"title":"two"}]')).to_a
+
+    expect(records).to eq([ { "title" => '1/2" coins' }, { "title" => "two" } ])
+  end
+
   it "rejects a non-array document" do
     expect {
       described_class.each(StringIO.new('{"title":"one"}')).to_a

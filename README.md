@@ -1,9 +1,13 @@
-# Problem statement
+# Recipe Finder
 
 Recipe Finder helps people decide what to cook from the ingredients they have
 at home. They can search the ingredient catalogue, build an anonymous pantry,
 and find recipes ordered by ingredient coverage, then by fewer missing
 ingredients and rating.
+
+<img src="./images/meal-planner.png" width="60%"/>
+<img src="./images/meal-planner-1.png" width="60%"/>
+<img src="./images/meal-planner-2.png" width="60%"/>
 
 ## Application
 

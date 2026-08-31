@@ -31,9 +31,13 @@ module RecipeImport
 
         object << char
         if in_string
-          escaped = !escaped && char == "\\"
-          in_string = false if char == '"' && !escaped
-          escaped = false if char != "\\"
+          if escaped
+            escaped = false
+          elsif char == "\\"
+            escaped = true
+          elsif char == '"'
+            in_string = false
+          end
           next
         end
 

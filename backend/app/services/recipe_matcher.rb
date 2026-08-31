@@ -90,7 +90,7 @@ class RecipeMatcher
   sig { params(cursor: T.nilable(T::Hash[String, T.untyped])).returns(T.untyped) }
   def complete_matches(cursor)
     scope = Recipe
-      .where("recipes.canonical_ingredient_ids <@ ?", @ingredient_ids)
+      .where("recipes.canonical_ingredient_ids <@ #{ingredient_ids_array_sql}")
       .where("recipes.required_ingredient_count > 0")
       .select(*[
         "recipes.*",
