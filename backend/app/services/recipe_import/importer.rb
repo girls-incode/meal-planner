@@ -2,12 +2,14 @@
 # frozen_string_literal: true
 
 require "digest"
+require "json"
 require "set"
 
 module RecipeImport
   class Importer
     extend T::Sig
     BATCH_SIZE = 500
+    MAX_SOURCE_BYTES = 25.megabytes
     PARSER_VERSION = "2.0.0"
     COMPOUND = /\A(?<left>[a-z][a-z ]*?) and (?<right>[a-z][a-z ]*)\z/.freeze
 
@@ -137,7 +139,12 @@ module RecipeImport
 
     sig { params(block: T.proc.params(record: T.untyped).void).returns(T.untyped) }
     def each_record(&block)
-      @io_factory.call { |io| JsonArrayStream.each(io, &block) }
+      @io_factory.call do |io|
+        source = io.read(MAX_SOURCE_BYTES + 1)
+        raise ArgumentError, "source exceeds #{MAX_SOURCE_BYTES} bytes" if source.bytesize > MAX_SOURCE_BYTES
+
+        JSON.parse(source).each(&block)
+      end
     end
 
     sig { void }

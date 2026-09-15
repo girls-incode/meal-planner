@@ -49,5 +49,49 @@ RSpec.describe RecipeImport::RecipeValidator do
 
       expect(attributes).to include(ratings: 4.5, prep_time_minutes: 20, cook_time_minutes: 30)
     end
+
+    it "decodes HTML entities in the title and cuisine" do
+      attributes = described_class.attributes(
+        "title" => "ARGO&reg; Corn Starch",
+        "ingredients" => [ "1 egg" ],
+        "cuisine" => "Cook&#39;s Country"
+      )
+
+      expect(attributes).to include(title: "ARGO® Corn Starch", cuisine: "Cook's Country")
+    end
+  end
+
+  describe ".valid?" do
+    it "rejects a title that is blank after HTML tags are removed" do
+      record = { "title" => "<br>", "ingredients" => [ "1 egg" ] }
+
+      expect(described_class.valid?(record)).to be(false)
+    end
+  end
+
+  describe ".category_name" do
+    it "decodes HTML entities, including named entities CGI.unescapeHTML does not know" do
+      record = { "category" => "ARGO&reg;, KARO&reg;, FLEISCHMANN'S&reg;" }
+
+      expect(described_class.category_name(record)).to eq("ARGO®, KARO®, FLEISCHMANN'S®")
+    end
+
+    it "returns nil for a blank category" do
+      expect(described_class.category_name({ "category" => "  " })).to be_nil
+    end
+
+    it "strips literal HTML tags rather than keeping their markup as visible text" do
+      record = { "category" => "Recipes <script>alert(1)</script> Tag" }
+
+      expect(described_class.category_name(record)).to eq("Recipes alert(1) Tag")
+    end
+  end
+
+  describe ".author_name" do
+    it "decodes HTML entities" do
+      record = { "author" => "Betty Crocker&reg;" }
+
+      expect(described_class.author_name(record)).to eq("Betty Crocker®")
+    end
   end
 end

@@ -76,7 +76,7 @@ paths:
           type: string
       responses:
         '200':
-          description: legacy percentage-prefixed ingredients are not returned
+          description: only ingredients in the current recipe catalog are returned
           content:
             application/json:
               schema:
@@ -100,6 +100,12 @@ paths:
                 required:
                 - data
                 - nextCursor
+        '422':
+          description: invalid argument
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/pantry-items":
     get:
       summary: List the current pantry items
@@ -142,6 +148,12 @@ paths:
                 required:
                 - data
                 - nextCursor
+        '400':
+          description: missing or invalid pantry session header
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
     post:
       summary: Add an ingredient to the pantry
       tags:
@@ -170,6 +182,12 @@ paths:
                         type: string
                       name:
                         type: string
+        '422':
+          description: ingredient already in pantry
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
       requestBody:
         content:
           application/json:
@@ -205,6 +223,8 @@ paths:
       responses:
         '204':
           description: pantry item removed
+        '404':
+          description: pantry item not found
   "/api/v1/recipe-matches":
     post:
       summary: Match recipes against selected ingredients
@@ -281,6 +301,12 @@ paths:
                   nextCursor:
                     type: string
                     nullable: true
+        '422':
+          description: invalid argument
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
       requestBody:
         content:
           application/json:
@@ -401,17 +427,21 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: object
-                    properties:
-                      code:
-                        type: string
-                      message:
-                        type: string
-                      requestId:
-                        type: string
+                "$ref": "#/components/schemas/Error"
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
 servers:
 - url: http://{defaultHost}
   variables:

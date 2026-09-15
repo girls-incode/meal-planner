@@ -47,6 +47,7 @@ jobs:
         with:
           bundler-cache: true
           working-directory: backend
+      - run: cp .env.example .env
       - run: bin/rails db:prepare
       - run: bundle exec rspec
 

@@ -172,6 +172,13 @@ RSpec.describe 'api/v1/recipes', type: :request do
         let(:match_request) { { ingredients: [ create(:ingredient).id ], maxMissing: 5 } }
         run_test!
       end
+
+      response '422', 'invalid argument' do
+        schema '$ref' => '#/components/schemas/Error'
+
+        let(:match_request) { {} }
+        run_test!
+      end
     end
   end
 
@@ -238,17 +245,7 @@ RSpec.describe 'api/v1/recipes', type: :request do
       end
 
       response '404', 'recipe not found' do
-        schema type: :object,
-               properties: {
-                 error: {
-                   type: :object,
-                   properties: {
-                     code: { type: :string },
-                     message: { type: :string },
-                     requestId: { type: :string }
-                   }
-                 }
-               }
+        schema '$ref' => '#/components/schemas/Error'
 
         let(:'X-Pantry-Session') { pantry_session }
         let(:id) { SecureRandom.uuid }

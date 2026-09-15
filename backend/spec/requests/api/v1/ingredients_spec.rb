@@ -32,6 +32,19 @@ RSpec.describe 'api/v1/ingredients', type: :request do
     expect(response.parsed_body.dig('error', 'message')).to eq('limit must be between 1 and 20')
   end
 
+  it 'renders invalid query parameters as a structured bad request' do
+    get '/api/v1/ingredients?limit=1&limit[]=2', headers: { 'X-Request-Id' => 'invalid-query-request' }
+
+    expect(response).to have_http_status(:bad_request)
+    expect(response.parsed_body).to eq(
+      'error' => {
+        'code' => 'BAD_REQUEST',
+        'message' => 'Request parameters are invalid',
+        'requestId' => 'invalid-query-request'
+      }
+    )
+  end
+
   path '/api/v1/ingredients' do
     get 'Search ingredients' do
       tags 'Ingredients'
@@ -71,8 +84,6 @@ RSpec.describe 'api/v1/ingredients', type: :request do
           catalog_ingredient = create(:ingredient, name: 'celery')
           create(:recipe_ingredient, recipe:, ingredient: catalog_ingredient, raw_text: '2 stalks celery')
           create(:ingredient, name: '2 stalks celery')
-          legacy_percentage = create(:ingredient, name: '100% pure pumpkin')
-          create(:recipe_ingredient, recipe:, ingredient: legacy_percentage, raw_text: '1 can 100% pure pumpkin')
         end
 
         let(:q) { 'celery' }
@@ -82,18 +93,11 @@ RSpec.describe 'api/v1/ingredients', type: :request do
         end
       end
 
-      response '200', 'legacy percentage-prefixed ingredients are not returned' do
-        before do
-          recipe = create(:recipe)
-          legacy_ingredient = create(:ingredient, name: '100% pure pumpkin')
-          create(:recipe_ingredient, recipe:, ingredient: legacy_ingredient, raw_text: '1 can 100% pure pumpkin')
-        end
+      response '422', 'invalid argument' do
+        schema '$ref' => '#/components/schemas/Error'
 
-        let(:q) { 'pumpkin' }
-
-        run_test! do |response|
-          expect(JSON.parse(response.body).fetch('data')).to be_empty
-        end
+        let(:cursor) { 'invalid' }
+        run_test!
       end
     end
   end

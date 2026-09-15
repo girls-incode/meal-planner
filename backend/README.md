@@ -1,48 +1,36 @@
 # Recipe Finder — Backend
 
-Rails API-only backend for the recipe-matching prototype. It imports and
-normalizes a recipe catalogue, keeps an anonymous pantry, and ranks recipes by
-the share of their required ingredients that are selected.
+Rails API-only backend for the recipe-matching prototype. It imports and normalizes a recipe catalogue, keeps an anonymous pantry, and ranks recipes by the share of each recipe's required ingredients that are selected.
 
 ## Requirements
 
 - Ruby 3.3.8
-- PostgreSQL 14+ with the `citext` and `pg_trgm` extensions available
-- Bundler (`gem install bundler`)
+- Rails 8.1.3
+- PostgreSQL 16 with the `pg_trgm` extension
 
 ## Setup
 
 ```bash
 cd backend
-gem install bundler  # if `bundle` isn't already on your PATH
-
-# `gem install` puts executables in a user gem dir that may not be on PATH
-# by default (e.g. ~/.local/share/gem/ruby/<version>/bin). If `bundle` is
-# "command not found" after installing, add that dir to PATH (check with
-# `gem env gemdir`) and reload your shell (`source ~/.zshrc` or a new tab).
-
+gem install bundler
 bundle install
+
+# Configure environment variables (see .env.example)
+cp .env.example .env
 
 # Create and migrate the development database
 bin/rails db:create db:migrate
-# Prepare the test database when running the test suite
-RAILS_ENV=test bin/rails db:migrate
 
-# Imports db/data/recipes-en.json. It is safe to re-run: existing recipes'
-# ingredient joins are rebuilt, so parser improvements repair a prior import.
-# The import runs in batches and can take several minutes; consider running it
-# in the background.
+# Prepare the test database before running the test suite
+RAILS_ENV=test bin/rails db:prepare
+
 bin/rails db:seed
 ```
 
-`config/database.yml` uses the default Postgres connection (peer auth over
-the local Unix socket, current OS user as the role) — no username/password
-needed locally as long as your Postgres role can create databases. Override
-with `DATABASE_URL` if your setup differs.
+`db:seed` downloads the gzip JSON source configured by `RECIPES_SOURCE_URL` (see `.env.example`). The importer verifies HTTPS and gzip content, limits the compressed download to 20 MB, then parses the expanded JSON payload (limited to 25 MB) twice: once to build catalogs and once to persist recipe batches.
+Each run records an `ImportRun`.
 
-The local seed imports the bundled JSON file. The importer streams the source
-twice, records an `ImportRun`, and upserts catalogue data in batches of 500.
-To synchronously import the default remote gzip source instead, run:
+To run the same import directly:
 
 ```bash
 bin/rails runner 'ImportRecipesJob.perform_now'
@@ -54,29 +42,19 @@ bin/rails runner 'ImportRecipesJob.perform_now'
 bin/rails server
 ```
 
-The API is served at `http://localhost:3000/api/v1`. A pantry is identified
-by an `X-Pantry-Session` request header containing a client-generated UUID.
-There are no user accounts; sessions are anonymous.
+The API is served at `http://localhost:3000/api/v1`. A pantry is identified by an `X-Pantry-Session` request header containing a client-generated UUID. There are no user accounts; sessions are anonymous.
 
 ### Docker development
 
-From the repository root, start the backend together with PostgreSQL (and the
-frontend):
+From the repository root, start the backend and the frontend:
 
 ```bash
 docker compose up --build
 ```
 
-After PostgreSQL passes its health check, Compose removes any stale Rails PID,
-creates and migrates the development database, imports the bundled catalogue,
-and starts Rails at `http://localhost:3000`. The backend source is bind-mounted
-for development, and the development image starts Rails through `bundle exec`
-so it uses the image's installed Gemfile dependencies.
-
 ### Docker image
 
-The production Dockerfile builds a multi-stage Rails image with only runtime
-gems and packages. Build it from this directory:
+The production Dockerfile builds a multi-stage Rails image with only runtime gems and packages. Build it from this directory:
 
 ```bash
 docker build -t backend .
@@ -86,10 +64,7 @@ docker run -d --name backend -p 80:80 \
   backend
 ```
 
-The container listens on port 80 and runs `db:prepare` before starting the
-Rails server. Run it behind a TLS-terminating proxy in production; production
-Rails has HTTPS enforcement enabled. The image contains the exact-match
-relational matcher and does not require embedding or external search services.
+The container listens on port 80 and runs `db:prepare` before starting the Rails server. Run it behind a TLS-terminating proxy in production; production Rails has HTTPS enforcement enabled. The image contains the exact-match relational matcher and does not require embedding or external search services.
 
 ### Endpoints
 
@@ -116,14 +91,9 @@ curl -X POST -H "Content-Type: application/json" \
   http://localhost:3000/api/v1/recipe-matches
 ```
 
-`X-Pantry-Session` must be a UUID. Recipe matching does not require a pantry
-session because ingredient IDs can be submitted directly. It identifies an
-anonymous pantry rather than an account; treat it as a bearer capability.
-The first valid pantry request creates that session's empty pantry when needed.
+`X-Pantry-Session` must be a UUID. Recipe matching does not require a pantry session because ingredient IDs can be submitted directly. It identifies an anonymous pantry rather than an account; treat it as a bearer capability. The first valid pantry request creates that session's empty pantry when needed.
 
-`POST /api/v1/pantry-items` currently accepts only `ingredientId`. Its response also
-contains nullable `quantity`, `unit`, and `expiresAt` fields, which are not
-yet writable through the API.
+`POST /api/v1/pantry-items` accepts only `ingredientId`. Its response includes the nullable `quantity` and `unit` fields, which are not yet writable through the API.
 
 ### Recipe matching pagination
 
@@ -138,10 +108,7 @@ yet writable through the API.
 }
 ```
 
-`limit` defaults to 20 and may be set from 1 to 100. `maxMissing` defaults
-to 4 and may be set from 0 to 100. An optional `categoryId` must be a known
-category UUID. The response is an
-object rather than a bare array:
+`limit` defaults to 20 and may be set from 1 to 100. `maxMissing` defaults to 4 and may be set from 0 to 100. An optional `categoryId` must be a known category UUID. The response is an object rather than a bare array:
 
 ```json
 {
@@ -150,47 +117,27 @@ object rather than a bare array:
 }
 ```
 
-Send `nextCursor` as `cursor` to continue. `nextCursor` is `null` on the last
-page. The cursor is tied to the submitted ingredients, category, and missing
-threshold, so it cannot be reused for another search. The legacy `page`
-parameter is not supported.
+Send `nextCursor` as `cursor` to continue. `nextCursor` is `null` on the last page. The cursor is tied to the submitted ingredients, category, and missing threshold, so it cannot be reused for another search. The legacy `page` parameter is not supported.
 
-`GET /categories` uses the same `{ data, nextCursor }` cursor response shape;
-its `limit` defaults to 20 and is capped at 100. Ingredient search also
-defaults to 20 and is capped at 20. Match results include category and author
-objects, match counts and percentage, and the missing ingredients for each
-returned recipe. Recipe detail returns the author name, parsed ingredient-line
-metadata, `owned` flags, and missing ingredients for the pantry session.
+`GET /api/v1/categories` and `GET /api/v1/pantry-items` use the same `{ data, nextCursor }` cursor response shape; their `limit` defaults to 20 and is capped at 100. Ingredient search also defaults to 20 and is capped at 20. `POST /api/v1/recipe-matches` uses that response shape as well. Match results
+include category and author objects, match counts and percentage, and the missing ingredients for each returned recipe. Recipe detail returns the author name, parsed ingredient-line metadata, `owned` flags, and missing ingredients for the pantry session.
 
-Client errors use `{ "error": { "code", "message", "requestId" } }`. The API
-returns `400` for a missing or malformed pantry-session header, `404` for a
-resource outside the requested scope, and `422` for invalid match inputs or
-duplicate pantry items.
+Client errors use `{ "error": { "code", "message", "requestId" } }`. The API returns `400` for malformed JSON, invalid request parameters, or a missing or malformed pantry-session header; `404` for a resource outside the requested scope; and `422` for invalid match inputs or duplicate pantry items.
 
 ### Pagination cursors
 
-All four paginated endpoints share one base class, `Cursor`
-(`app/services/cursor.rb`). Each cursor is a payload signed with a
-purpose-scoped `Rails.application.message_verifier`, so a client cannot forge a
-cursor, edit one, or replay one minted for a different endpoint — each purpose
-string derives a distinct signing key.
+The three cursor-paginated `GET` endpoints and `POST /api/v1/recipe-matches` share one base class, `Cursor` (`app/services/cursor.rb`). Each cursor is a payload signed with a purpose-scoped `Rails.application.message_verifier`, so a client cannot forge a cursor, edit one, or replay one minted for a different
+endpoint — each purpose string derives a distinct signing key.
 
-Because signing already guarantees the payload is ours and unmodified, `decode`
-validates only what signing cannot:
+Because signing already guarantees the payload is ours and unmodified, `decode` validates only what signing cannot:
 
 - **version** — a cursor signed by a previous deploy, whose payload shape has
   since changed, is still validly signed; `VERSION` is what rejects it.
 - **scope** — a cursor is only meaningful inside the result set it was minted
-  from. Each subclass supplies its own scope: the search query for
-  `IngredientCursor`, the pantry id for `PantryItemCursor`, and the ingredient
-  set + category + missing threshold for `RecipeMatchCursor`.
-  `CategoryCursor` has no scope because its listing is
+  from. Each subclass supplies its own scope: the search query for `IngredientCursor`, the pantry id for `PantryItemCursor`, and the ingredient set + category + missing threshold for `RecipeMatchCursor`. `CategoryCursor` has no scope because its listing is
   unfiltered.
 
-Field-level type checks on the decoded payload would only re-validate values the
-app itself wrote one request earlier, so they are deliberately absent. A cursor
-that fails either check — or whose signature does not verify — raises
-`Cursor::InvalidCursor`, rescued once in `ApplicationController` into a `422`
+Field-level type checks on the decoded payload would only re-validate values the app itself wrote one request earlier, so they are deliberately absent. A cursor that fails either check — or whose signature does not verify — raises `Cursor::InvalidCursor`, rescued once in `ApplicationController` into a `422`
 with the message `cursor is invalid`.
 
 Subclasses therefore carry only a purpose and a payload builder:
@@ -209,9 +156,7 @@ class IngredientCursor < Cursor
 end
 ```
 
-Changing a cursor's payload shape invalidates cursors issued by the previously
-running version. In-flight paginators receive one `422` and restart from the
-first page.
+Changing a cursor's payload shape invalidates cursors issued by the previously running version. In-flight paginators receive one `422` and restart from the first page.
 
 ### API docs (Swagger/OpenAPI)
 
@@ -225,8 +170,7 @@ bin/rails server
 
 ### Request workflow
 
-The normal user journey is: choose ingredients, find matching recipes, then
-open a recipe to see which ingredients are owned or missing.
+The normal user journey is: choose ingredients, find matching recipes, then open a recipe to see which ingredients are owned or missing.
 
 ```mermaid
 flowchart TD
@@ -243,16 +187,11 @@ flowchart TD
   M --> D
 ```
 
-`/recipe-matches` accepts selected ingredient IDs directly, so saving them to
-the pantry is optional for matching. A pantry session is required for pantry
-endpoints and recipe details.
+`/recipe-matches` accepts selected ingredient IDs directly, so saving them to the pantry is optional for matching. A pantry session is required for pantry endpoints and recipe details.
 
 ## Architecture
 
-This is a Rails 8.1 API-only modular monolith. A single application owns the
-HTTP API, domain services, background jobs, and PostgreSQL persistence. There
-is no user authentication or external message broker: an anonymous pantry is
-created on demand from the client-supplied `X-Pantry-Session` UUID, and pantry
+This is a Rails 8.1 API-only modular monolith. A single application owns the HTTP API, domain services, background jobs, and PostgreSQL persistence. There is no user authentication or external message broker: an anonymous pantry is created on demand from the client-supplied `X-Pantry-Session` UUID, and pantry
 events are in-process `ActiveSupport::Notifications` events.
 
 ```mermaid
@@ -269,7 +208,7 @@ flowchart LR
   end
 
   Database[("PostgreSQL\nnormalized catalog")]
-  Source["Recipe JSON\nlocal file or remote gzip"]
+  Source["Configured gzip JSON source"]
 
   Client --> API
   API --> Session
@@ -281,38 +220,22 @@ flowchart LR
   Jobs --> Source
 ```
 
-Controllers remain thin: they validate request shape, establish the current
-pantry when required, call a service or query scope, and serialize the result.
-The domain layer contains the substantial work: ingredient parsing and
-canonicalization, streaming/batched import, pantry mutations, signed cursor
-handling, and recipe matching. Active Record models express associations and
-integrity rules; PostgreSQL enforces the corresponding foreign keys and unique
-indexes.
+Controllers remain thin: they validate request shape, establish the current pantry when required, call a service or query scope, and serialize the result. The domain layer contains the substantial work: ingredient parsing and canonicalization, bounded/batched import, pantry mutations, signed cursor
+handling, and recipe matching. Active Record models express associations and integrity rules; PostgreSQL enforces the corresponding foreign keys and unique indexes.
 
-Recipe matching is relational and explainable. `recipe_ingredients` is the
-source of truth; `recipes.canonical_ingredient_ids` is a transactionally
-maintained `uuid[]` projection with a GIN index for complete matches. Partial
-matches use the normalized join table. There is no search-document table,
+Recipe matching is relational and explainable. `recipe_ingredients` is the source of truth; `recipes.canonical_ingredient_ids` is a transactionally maintained `uuid[]` projection with a GIN index for complete matches. Partial matches use the normalized join table. There is no search-document table,
 embedding runtime, vector index, external search service, or result cache.
 
-The current event subscriber logs `pantry.updated`; it is an extension seam
-for cache invalidation or asynchronous side effects, not a message queue.
+The current event subscriber logs `pantry.updated`; it is an extension seam for cache invalidation or asynchronous side effects, not a message queue.
 
 ### Database schema
 
-The schema below is generated from the current Rails models and PostgreSQL
-schema.
-
-**Cardinality notation:** `||` = exactly one, `o|` = zero or one, and `o{` =
-zero or many. Read a connector from one table to the other; for example,
-`PANTRIES ||--o{ PANTRY_ITEMS` means every pantry item belongs to exactly one
-pantry, while a pantry can have zero or many items.
+The diagram reflects the current schema. `USERS` and the unused `pantry_items.user_id` reference have been removed; anonymous pantries remain identified by their session token.
 
 ```mermaid
 erDiagram
   PANTRIES ||--o{ PANTRY_ITEMS : "1:N"
   INGREDIENTS ||--o{ PANTRY_ITEMS : "1:N"
-  USERS o|--o{ PANTRY_ITEMS : "1:N"
 
   RECIPES ||--o{ RECIPE_INGREDIENTS : "1:N"
   INGREDIENTS ||--o{ RECIPE_INGREDIENTS : "1:N"
@@ -333,17 +256,8 @@ erDiagram
     UUID id PK
     UUID pantry_id FK
     UUID ingredient_id FK
-    UUID user_id FK "nullable"
     DECIMAL quantity
     VARCHAR unit
-    TIMESTAMP expires_at
-    TIMESTAMP created_at
-    TIMESTAMP updated_at
-  }
-
-  USERS {
-    UUID id PK
-    VARCHAR email UK
     TIMESTAMP created_at
     TIMESTAMP updated_at
   }
@@ -380,7 +294,7 @@ erDiagram
 
   INGREDIENTS {
     UUID id PK
-    CITEXT name UK
+    VARCHAR name UK "lowercase canonical form"
     TIMESTAMP created_at
     TIMESTAMP updated_at
   }
@@ -428,76 +342,44 @@ erDiagram
   }
 ```
 
-The relationship types are:
-
-| Relationship | Cardinality | How it is enforced |
-|---|---|---|
-| `pantries` → `pantry_items` | 1:N | Required `pantry_items.pantry_id` FK |
-| `ingredients` → `pantry_items` | 1:N | Required FK; `(pantry_id, ingredient_id)` is unique |
-| `users` → `pantry_items` | 0..1:N | Nullable `user_id`; reserved for future accounts |
-| `recipes` ↔ `ingredients` | N:N | `recipe_ingredients` join table; `(recipe_id, ingredient_id)` is unique |
-| `authors` → `recipes` | 0..1:N | Nullable `recipes.author_id` FK |
-| `categories` → `recipes` | 0..1:N | Nullable `recipes.category_id` FK |
-| `import_runs` → `ingredient_parse_errors` | 1:N | Required `import_run_id` FK |
-| `recipes` → `ingredient_parse_errors` | 0..1:N | Nullable `recipe_id` FK for errors tied to a persisted recipe |
-
-`IMPORT_RUNS` and `INGREDIENT_PARSE_ERRORS` are audit tables. Each error is
-always attached to one import run and may be attached to the recipe whose line
-failed parsing; malformed source data does not abort the whole import.
-
-`USERS` exists with a nullable `pantry_items.user_id` as a prepared extension
-point for accounts. Nothing in the API sets it today — pantries are still
-identified solely by `session_token`.
-
-Important indexes include the unique `(pantry_id, ingredient_id)` constraint on
-`pantry_items`, the unique `(recipe_id, ingredient_id)` constraint on
-`recipe_ingredients`, the recipe lookup index on `(ingredient_id, recipe_id)`,
-the trigram GIN index on `ingredients.name::text` for autocomplete, and the unique
-`(title, author_id)` index on `recipes` (with `nulls_not_distinct`, so
-authorless duplicate titles still collide) that makes the import upsertable.
+`IMPORT_RUNS` and `INGREDIENT_PARSE_ERRORS` are audit tables. Each error is always attached to one import run and may be attached to the recipe whose line failed parsing; malformed source data does not abort the whole import.
 
 - **`required_ingredient_count` on Recipe** (denormalized): Updated whenever the shared recipe-ingredient writer replaces a recipe's ingredients. Enables filtering "recipes missing ≤ 2 ingredients" without subqueries.
-- **`citext` for ingredient names**: Case-insensitive matching in queries; the trigram GIN index on `(name::text)` enables ILIKE search.
+- **Lowercase ingredient names**: Import and model writes canonicalize names to lowercase; the trigram GIN index on `(name::text)` enables case-insensitive ILIKE search.
 - **`pantry_id` index on pantry_items**: Keeps anonymous pantry reads and item removal efficient.
 - **Recipe-backed picker catalog**: `/ingredients` returns only ingredients referenced by the current recipe import, keeping stale orphaned rows out of the pantry picker.
-- **Legacy catalog guard**: percentage package claims are excluded from the picker while a re-seed repairs old imports; the importer also cleans leading and embedded claims.
 - **Two-phase matching read path**: `RecipeMatcher` finds complete matches through the GIN-indexed `recipes.canonical_ingredient_ids` projection, then falls back to the normalized `(ingredient_id, recipe_id)` index only when the page still needs partial matches. Missing ingredients for the limited result page are fetched in one batched query.
 - **Cursor-based pagination**: `GET /api/v1/ingredients`, `GET /api/v1/categories`, `GET /api/v1/pantry-items`, and `POST /api/v1/recipe-matches` return `{ data, nextCursor }`. Pass the opaque `nextCursor` as `cursor` to fetch the next page; `page` is not supported for matching. Cursors are signed and scoped to the search they were minted from — see [Pagination cursors](#pagination-cursors).
 - **PostgreSQL UUIDs**: model and bulk-import writes use PostgreSQL's `gen_random_uuid()` defaults consistently; bulk operations do not depend on model callbacks.
 
 ## Data ingestion
 
-`RecipeSeeder` remains the compatibility entry point; `RecipeImport::Importer` owns the import workflow. It streams the source twice and persists batches of 500 records rather than issuing a query per ingredient line. Its JSON-array reader tracks quoted strings and escapes, so escaped quotes inside source fields do not break record boundaries. Re-running it replaces each imported recipe's join rows and refreshes the canonical-ID projection, so parsing and normalization changes repair existing imports.
+`RecipeSeeder` remains the compatibility entry point; `RecipeImport::Importer` owns the import workflow. It reads and parses the bounded JSON array twice and persists batches of 500 records rather than issuing a query per ingredient line. Re-running it replaces each imported recipe's join rows and refreshes the
+canonical-ID projection, so parsing and normalization changes repair existing imports.
 
 ### Ingestion pipeline
 
 ```mermaid
 flowchart TD
-  S["recipes-en.json\nStream source records"]
+  S["Configured .json.gz source"]
+  D["ImportRecipesJob\nHTTPS download to binary tempfile"]
 
-  subgraph PASS1["Pass 1: Parse and normalize — no database writes"]
+  subgraph PASS1["Pass 1: Parse JSON and build catalogs"]
     V[Validate recipe]
     L["Ingredients::LineParser\nExtract quantity, unit, and name"]
     N["Ingredients::Normalizer\nCreate canonical ingredient names"]
-    V --> L --> N
+    U["Upsert ingredients, categories, and authors"]
+    V --> L --> N --> U
   end
 
-  subgraph PASS2["Pass 2: Build ingredient catalog — batches of 500"]
-    U["Deduplicate names"]
-    IU["Upsert ingredients"]
-    MAP["Build name → UUID map"]
-    U --> IU --> MAP
-  end
-
-  subgraph PASS3["Pass 3: Persist recipes — batches of 500"]
+  subgraph PASS2["Pass 2: Parse JSON and persist batches"]
     R["Upsert recipes"]
     RI["Replace recipe_ingredients\nand canonical projection"]
     R --> RI
   end
 
-  S --> V
-  N --> U
-  MAP --> R
+  S --> D --> V
+  U --> R
 ```
 
 ### Normalization pipeline (detailed)
@@ -524,32 +406,20 @@ flowchart TD
 ### Deliberate current boundaries
 
 - `recipe_ingredients` remains the normalized source of truth. The
-  GIN-indexed `canonical_ingredient_ids` projection is maintained in the same
-  transaction by `RecipeIngredients::Replace`; direct association writes are
-  not supported.
-- The importer is idempotent, streaming, and bulk-oriented. It makes two
-  passes over the source (catalogue, then persistence) and records import-run
-  audit data and parser versioning. The remote-import job downloads the gzip
-  source to a bounded temporary file before streaming each pass.
+  GIN-indexed `canonical_ingredient_ids` projection is maintained in the same transaction by `RecipeIngredients::Replace`; direct association writes are not supported.
+- The importer is idempotent and bulk-oriented. It makes two bounded JSON
+  parsing passes over the source (catalogue, then persistence) and records import-run audit data and parser versioning. The remote-import job downloads the gzip source to a binary temporary file before each pass opens it.
 - `recipe_ingredients` is intentionally distinct by `(recipe_id,
-  ingredient_id)` because matching is availability-based rather than
-  quantity-based. If preserving duplicate source lines becomes a product
-  requirement, introduce a separate ordered ingredient-line model while
-  retaining the distinct relation as the matching projection.
+  ingredient_id)` because matching is availability-based rather than quantity-based. If preserving duplicate source lines becomes a product requirement, introduce a separate ordered ingredient-line model while retaining the distinct relation as the matching projection.
 
 ## Recipe matching algorithm (RecipeMatcher)
 
-The `POST /api/v1/recipe-matches` endpoint ranks recipes by the **percentage
-of each recipe's required canonical ingredients that are selected**, then by
-fewer missing ingredients, then by rating. The complete-match phase uses an
-indexed per-recipe projection.
-Only when that phase cannot fill the requested page does the matcher count
-normalized `recipe_ingredients` rows for partial matches.
+The `POST /api/v1/recipe-matches` endpoint ranks recipes by the **percentage of each recipe's required canonical ingredients that are selected**, then by fewer missing ingredients, then by rating. The complete-match phase uses an indexed per-recipe projection.
+Only when that phase cannot fill the requested page does the matcher count normalized `recipe_ingredients` rows for partial matches.
 
 ### Matching workflow
 
-After the controller validates the submitted UUIDs, matching finds complete
-matches first and queries normalized rows only for the remaining partial slots:
+After the controller validates the submitted UUIDs, matching finds complete matches first and queries normalized rows only for the remaining partial slots:
 
 ```mermaid
 flowchart TD
@@ -570,26 +440,15 @@ flowchart TD
   G --> H --> I --> J
 ```
 
-The endpoint validates the submitted ingredient IDs, finds and ranks up to
-`limit + 1` recipes, and loads missing ingredients for the returned page in a
-single batch. The last step does not issue one query per recipe (no N+1 query).
-The opaque cursor records whether it ended in the complete or partial phase,
-so a transition between the two cannot skip or repeat results and avoids offset
-scans.
+The endpoint validates the submitted ingredient IDs, finds and ranks up to `limit + 1` recipes, and loads missing ingredients for the returned page in a single batch. The last step does not issue one query per recipe (no N+1 query). The opaque cursor records whether it ended in the complete or partial phase,
+so a transition between the two cannot skip or repeat results and avoids offset scans.
 
 ### Scaling options
 
-`recipes.canonical_ingredient_ids` is a sorted, distinct `uuid[]` projection
-kept transactionally in sync with `recipe_ingredients`. Its GIN index serves
-the complete-match phase (recipes whose full canonical ingredient set is
-contained in the selected IDs). Partial matching remains normalized and uses
-the ingredient-leading `recipe_ingredients` index, because exact partial-match
-ranking still has to count the selected ingredients for every candidate.
+`recipes.canonical_ingredient_ids` is a sorted, distinct `uuid[]` projection kept transactionally in sync with `recipe_ingredients`. Its GIN index serves the complete-match phase (recipes whose full canonical ingredient set is contained in the selected IDs). Partial matching remains normalized and uses
+the ingredient-leading `recipe_ingredients` index, because exact partial-match ranking still has to count the selected ingredients for every candidate.
 
-The current workload does not use a materialized view, cache table, external
-search service, or vector store. Add one only after production query profiling
-shows that the relational path is not meeting the required latency.
-
+The current workload does not use a materialized view, cache table, external search service, or vector store. Add one only after production query profiling shows that the relational path is not meeting the required latency.
 
 ### Match percentage calculation
 
@@ -614,14 +473,9 @@ This recipe is included if the threshold allows ≥ 2 missing ingredients.
 bundle exec rspec
 ```
 
-Covers model specs, import and matching service specs, and direct request specs
-for every API endpoint. Request coverage includes session validation, pantry
-ownership, duplicate item rejection, cursor metadata, pagination validation,
-404 responses, and no-N+1 query-count assertions.
+Covers model specs, import and matching service specs, and direct request specs for every API endpoint. Request coverage includes session validation, pantry ownership, duplicate item rejection, cursor metadata, pagination validation, 404 responses, and no-N+1 query-count assertions.
 
-`spec/services/cursor_spec.rb` exercises the shared cursor layer once —
-round-trip, tampering, scope mismatch, and replay across cursor classes — rather
-than repeating those cases per endpoint.
+`spec/services/cursor_spec.rb` exercises the shared cursor layer once — round-trip, tampering, scope mismatch, and replay across cursor classes — rather than repeating those cases per endpoint.
 
 ## Linting & static typing
 
@@ -631,8 +485,7 @@ bundle exec rubocop -A     # auto-fix
 bundle exec srb tc         # Sorbet typecheck (scoped to app/services)
 ```
 
-Sorbet RBIs are generated via [Tapioca](https://github.com/Shopify/tapioca) and
-are committed with the code they describe:
+Sorbet RBIs are generated via [Tapioca](https://github.com/Shopify/tapioca) and are committed with the code they describe:
 
 ```bash
 bundle exec tapioca gems  # after Gemfile.lock changes
@@ -640,47 +493,33 @@ bundle exec tapioca dsl   # after model, association, or schema changes
 bundle exec srb tc        # verify the generated RBIs and service types
 ```
 
-`tapioca dsl` boots Rails, so PostgreSQL must be available. Commit the resulting
-changes under `sorbet/rbi/` with the related dependency or application change.
+`tapioca dsl` boots Rails, so PostgreSQL must be available. Commit the resulting changes under `sorbet/rbi/` with the related dependency or application change.
 
 ## Domain events
 
-Pantry mutations publish an `ActiveSupport::Notifications` event
-(`pantry.updated`) that `app/events/pantry_subscriber.rb` logs — an
-in-process seam for future cache invalidation, no external broker.
+Pantry mutations publish an `ActiveSupport::Notifications` event (`pantry.updated`) that `app/events/pantry_subscriber.rb` logs — an in-process seam for future cache invalidation, no external broker.
 
 ## Further improvement: semantic recipe discovery
 
-The current matcher is intentionally exact and explainable: recipes are ranked
-by canonical ingredient coverage. A future semantic-discovery feature could
-also support intent-based searches such as “quick vegetarian comfort food” and
-surface recipes whose wording does not exactly match the user’s query.
+The current matcher is intentionally exact and explainable: recipes are ranked by canonical ingredient coverage. A future semantic-discovery feature could also support intent-based searches such as “quick vegetarian comfort food” and surface recipes whose wording does not exactly match the user’s query.
 
-That capability should be a separate candidate-generation stage: embed recipe
-content and the user query, retrieve a bounded candidate set with a vector
-index, then apply the existing exact ingredient and dietary filters before
-ranking. Exact ingredient coverage should remain the explanation shown to the
+That capability should be a separate candidate-generation stage: embed recipe content and the user query, retrieve a bounded candidate set with a vector index, then apply the existing exact ingredient and dietary filters before ranking. Exact ingredient coverage should remain the explanation shown to the
 user and the source of truth for match ranking.
 
-This is not part of the current runtime. It would require an embedding
-provider, a vector-capable PostgreSQL extension and table, background
-generation/backfill jobs, and a product decision about how semantic candidates
-interact with exact-match pagination.
+This is not part of the current runtime. It would require an embedding provider, a vector-capable PostgreSQL extension and table, background generation/backfill jobs, and a product decision about how semantic candidates interact with exact-match pagination.
 
 ### Production deployment
 
-The checked-in `config/deploy.yml` is a Kamal template. Before deploying,
-replace its server, registry, and proxy values, then provide secrets through
-your deployment environment:
+The checked-in `config/deploy.yml` is a Kamal template. Before deploying, replace its server, registry, and proxy values, then provide secrets through your deployment environment:
 
 - `RAILS_MASTER_KEY`
 - `DATABASE_URL` (or the database password expected by `config/database.yml`)
 - `FRONTEND_ORIGIN` (the exact HTTPS origin allowed to call the API)
+- `RECIPES_SOURCE_URL` (the gzip JSON recipe feed used by `ImportRecipesJob` / `db:seed`)
 
 The Rails container runs `db:prepare` on boot.
 
-Production enables HTTPS enforcement and keeps `/up` available for health
-checks. Configure the deployment's TLS-terminating proxy before deploying.
+Production enables HTTPS enforcement and keeps `/up` available for health checks. Configure the deployment's TLS-terminating proxy before deploying.
 
 ## Project structure
 
@@ -688,17 +527,16 @@ checks. Configure the deployment's TLS-terminating proxy before deploying.
 app/
   controllers/api/v1/      # thin controllers: ingredients, categories,
                            # pantry items, recipe matches, recipe detail
-  errors/api/              # Api::InvalidRequest, rescued into 422 responses
+  errors/api/              # Api::InvalidRequest and Api::BadRequest
   events/                  # PantrySubscriber — ActiveSupport::Notifications
   jobs/                    # ImportRecipesJob
   models/                  # Recipe, Ingredient, RecipeIngredient, Author,
-                           # Category, Pantry, PantryItem, User, ImportRun,
+                           # Category, Pantry, PantryItem, ImportRun,
                            # IngredientParseError
   serializers/             # lightweight camelCase JSON modules
   services/
     ingredients/           # LineParser, Normalizer, and ResolveInput
-    recipe_import/         # Importer, BatchWriter, JsonArrayStream,
-                           # RecipeValidator
+    recipe_import/         # Importer, BatchWriter, RecipeValidator
     pantry_items/          # Create, Destroy (publish `pantry.updated`)
     recipe_matcher.rb      # matching algorithm
     cursor.rb              # signed-cursor base: verify, version, scope
@@ -713,7 +551,6 @@ config/
   ci.rb                           # pipeline run by bin/ci
 db/
   migrate/
-  data/recipes-en.json     # source dataset
   schema.rb
   seeds.rb
 spec/

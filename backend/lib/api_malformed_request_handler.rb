@@ -10,11 +10,19 @@ class ApiMalformedRequestHandler
 
   def call(env)
     @app.call(env)
-  rescue ActionDispatch::Http::Parameters::ParseError, ActionController::BadRequest
+  rescue ActionDispatch::Http::Parameters::ParseError
+    bad_request(env, "Request body must be valid JSON")
+  rescue ActionController::BadRequest
+    bad_request(env, "Request parameters are invalid")
+  end
+
+  private
+
+  def bad_request(env, message)
     ApiErrorHandler.rack_response(
       status: :bad_request,
       code: "BAD_REQUEST",
-      message: "Request body must be valid JSON",
+      message:,
       request_id: env["action_dispatch.request_id"]
     )
   end

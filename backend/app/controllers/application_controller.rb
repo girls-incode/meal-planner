@@ -13,8 +13,7 @@ class ApplicationController < ActionController::API
     return true if uuid?(pantry_session_token)
 
     message = pantry_session_token.present? ? "X-Pantry-Session must be a valid UUID" : "Missing X-Pantry-Session header"
-    render_error(status: :bad_request, code: "BAD_REQUEST", message:)
-    false
+    raise Api::BadRequest, message
   end
 
   def pantry_session_token
@@ -36,6 +35,6 @@ class ApplicationController < ActionController::API
 
     value
   rescue TypeError, ArgumentError
-    raise Api::InvalidRequest, "#{key} must be an integer between #{minimum} and #{maximum}"
+    raise Api::InvalidRequest, "#{key} must be an integer"
   end
 end

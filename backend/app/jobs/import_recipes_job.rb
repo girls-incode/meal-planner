@@ -7,19 +7,20 @@ require "digest"
 class ImportRecipesJob < ApplicationJob
   queue_as :default
 
-  DEFAULT_SOURCE_URL = "https://pennylane-interviewing-assets-20220328.s3.eu-west-1.amazonaws.com/recipes-en.json.gz"
-  MAX_DOWNLOAD_BYTES = 500.megabytes
+  MAX_DOWNLOAD_BYTES = 20.megabytes
   HTTP_TIMEOUT = 30
+  GZIP_CONTENT_TYPE = %r{application/(?:gzip|x-gzip)|octet-stream}i
 
-  def perform(source_url: DEFAULT_SOURCE_URL, file_path: nil)
+  def perform(source_url: nil, file_path: nil)
     return RecipeSeeder.call(file: file_path, source_url:) if file_path
 
-    Tempfile.create([ "recipes", ".json.gz" ]) do |compressed|
+    source_url ||= ENV.fetch("RECIPES_SOURCE_URL")
+
+    Tempfile.create([ "recipes", ".json.gz" ], binmode: true) do |compressed|
       download(source_url, compressed)
       compressed.flush
-      # RecipeSeeder makes two passes (catalog then batches); each pass opens
-      # the gzip stream directly, so neither the compressed payload nor its
-      # expanded JSON array is materialized in memory.
+      # RecipeSeeder makes two passes (catalog then batches). Each pass reads
+      # a bounded JSON payload into memory before parsing it.
       RecipeSeeder.call(
         source_url:,
         source_fingerprint: Digest::SHA256.file(compressed.path).hexdigest,
@@ -39,7 +40,7 @@ class ImportRecipesJob < ApplicationJob
       http.request(request) do |response|
         response.value
         content_type = response["content-type"].to_s
-        raise ArgumentError, "source is not gzip content" unless content_type.empty? || content_type.match?(%r{application/(?:gzip|x-gzip)|octet-stream}i)
+        raise ArgumentError, "source is not gzip content" unless content_type.empty? || content_type.match?(GZIP_CONTENT_TYPE)
         content_length = response["content-length"].to_i
         raise ArgumentError, "source exceeds #{MAX_DOWNLOAD_BYTES} bytes" if content_length > MAX_DOWNLOAD_BYTES
 

@@ -324,7 +324,7 @@ RSpec.describe RecipeSeeder do
       .to eq([ "Recipe C", "", RecipeSeeder::PARSER_VERSION, "ingredient line is blank" ])
   end
 
-  it "makes two bounded streaming passes instead of retaining source recipes" do
+  it "makes separate catalog and persistence passes" do
     payload = [ { "title" => "Streamed", "ingredients" => [ "1 egg" ] } ].to_json
     openings = 0
     io_factory = lambda do |&block|
@@ -336,5 +336,14 @@ RSpec.describe RecipeSeeder do
 
     expect(openings).to eq(2)
     expect(Recipe.find_by!(title: "Streamed").ingredients.pluck(:name)).to eq([ "egg" ])
+  end
+
+  it "rejects a source that exceeds the in-memory limit" do
+    stub_const("RecipeImport::Importer::MAX_SOURCE_BYTES", 5)
+    io_factory = ->(&block) { StringIO.new("123456").then(&block) }
+
+    expect {
+      described_class.call(source_url: "https://example.test/recipes.json.gz", source_fingerprint: "fixture", io_factory:)
+    }.to raise_error(ArgumentError, "source exceeds 5 bytes")
   end
 end

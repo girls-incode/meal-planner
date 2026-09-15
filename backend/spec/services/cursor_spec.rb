@@ -47,7 +47,7 @@ RSpec.describe Cursor do
   it "requires a subclass to declare a purpose" do
     anonymous = Class.new(described_class)
 
-    expect { anonymous.encode({ "id" => "1" }) }
+    expect { anonymous.purpose }
       .to raise_error(NotImplementedError, /must declare a purpose/)
   end
 end

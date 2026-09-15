@@ -6,8 +6,6 @@ class CategoryCursor < Cursor
 
   purpose "categories-cursor"
 
-  # The category list is unfiltered, so there is nothing to scope its cursor
-  # to.
   sig { params(category: Category).returns(String) }
   def self.encode(category)
     encode_signed({ "name" => category.name, "id" => category.id })

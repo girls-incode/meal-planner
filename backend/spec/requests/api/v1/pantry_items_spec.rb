@@ -83,6 +83,13 @@ RSpec.describe 'api/v1/pantry_items', type: :request do
         let(:'X-Pantry-Session') { pantry_session }
         run_test!
       end
+
+      response '400', 'missing or invalid pantry session header' do
+        schema '$ref' => '#/components/schemas/Error'
+
+        let(:'X-Pantry-Session') { 'invalid' }
+        run_test!
+      end
     end
 
     post 'Add an ingredient to the pantry' do
@@ -118,6 +125,16 @@ RSpec.describe 'api/v1/pantry_items', type: :request do
         let(:pantry_item) { { ingredientId: ingredient.id } }
         run_test!
       end
+
+      response '422', 'ingredient already in pantry' do
+        schema '$ref' => '#/components/schemas/Error'
+
+        before { create(:pantry_item, pantry: create(:pantry, session_token: pantry_session), ingredient:) }
+
+        let(:'X-Pantry-Session') { pantry_session }
+        let(:pantry_item) { { ingredientId: ingredient.id } }
+        run_test!
+      end
     end
   end
 
@@ -132,6 +149,14 @@ RSpec.describe 'api/v1/pantry_items', type: :request do
         let(:'X-Pantry-Session') { pantry_session }
         let(:pantry) { create(:pantry, session_token: pantry_session) }
         let(:id) { create(:pantry_item, pantry:, ingredient:).id }
+        run_test!
+      end
+
+      response '404', 'pantry item not found' do
+        schema '$ref' => '#/components/schemas/Error'
+
+        let(:'X-Pantry-Session') { pantry_session }
+        let(:id) { SecureRandom.uuid }
         run_test!
       end
     end

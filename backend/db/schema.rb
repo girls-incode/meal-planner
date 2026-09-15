@@ -10,9 +10,8 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_29_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_010000) do
   # These are extensions that must be enabled in order to support this database
-  enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
 
@@ -63,10 +62,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_29_120000) do
 
   create_table "ingredients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.citext "name", null: false
+    t.string "name", null: false
     t.datetime "updated_at", null: false
     t.index "((name)::text) gin_trgm_ops", name: "index_ingredients_on_name_trgm", using: :gin
     t.index ["name"], name: "index_ingredients_on_name", unique: true
+    t.check_constraint "name::text = lower(name::text)", name: "ingredients_name_is_lowercase"
   end
 
   create_table "pantries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -78,17 +78,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_29_120000) do
 
   create_table "pantry_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.datetime "expires_at"
     t.uuid "ingredient_id", null: false
     t.uuid "pantry_id", null: false
     t.decimal "quantity"
     t.string "unit"
     t.datetime "updated_at", null: false
-    t.uuid "user_id"
     t.index ["ingredient_id"], name: "index_pantry_items_on_ingredient_id"
     t.index ["pantry_id", "ingredient_id"], name: "index_pantry_items_on_pantry_and_ingredient", unique: true
     t.index ["pantry_id"], name: "index_pantry_items_on_pantry_id"
-    t.index ["user_id"], name: "index_pantry_items_on_user_id"
   end
 
   create_table "recipe_ingredients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -128,18 +125,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_29_120000) do
     t.check_constraint "ratings IS NULL OR ratings >= 0::double precision", name: "ratings_non_negative"
   end
 
-  create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.string "email"
-    t.datetime "updated_at", null: false
-    t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
-  end
-
   add_foreign_key "ingredient_parse_errors", "import_runs"
   add_foreign_key "ingredient_parse_errors", "recipes"
   add_foreign_key "pantry_items", "ingredients"
   add_foreign_key "pantry_items", "pantries"
-  add_foreign_key "pantry_items", "users"
   add_foreign_key "recipe_ingredients", "ingredients"
   add_foreign_key "recipe_ingredients", "recipes"
   add_foreign_key "recipes", "authors"

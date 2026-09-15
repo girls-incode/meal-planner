@@ -4,8 +4,7 @@ module PantryItemSerializer
       id: pantry_item.id,
       ingredient: IngredientSerializer.as_json(pantry_item.ingredient),
       quantity: pantry_item.quantity,
-      unit: pantry_item.unit,
-      expiresAt: pantry_item.expires_at
+      unit: pantry_item.unit
     }
   end
 

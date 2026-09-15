@@ -5,5 +5,6 @@ class Recipe < ApplicationRecord
   has_many :ingredients, through: :recipe_ingredients
 
   validates :title, presence: true
-  validates :required_ingredient_count, numericality: { greater_than_or_equal_to: 0 }
+
+  validates :required_ingredient_count, numericality: { greater_than_or_equal_to: 0, only_integer: true }
 end

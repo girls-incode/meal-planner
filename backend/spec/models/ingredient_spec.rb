@@ -10,6 +10,10 @@ RSpec.describe Ingredient, type: :model do
     expect(build(:ingredient, name: "flour")).not_to be_valid
   end
 
+  it "stores names in their lowercase canonical form" do
+    expect(create(:ingredient, name: "  Flour ").name).to eq("flour")
+  end
+
   describe ".search" do
     it "matches ingredients case-insensitively by partial name" do
       matching = create(:ingredient, name: "yellow cornmeal")
