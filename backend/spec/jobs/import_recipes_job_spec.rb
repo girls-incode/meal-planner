@@ -19,10 +19,11 @@ RSpec.describe ImportRecipesJob do
     allow(response).to receive(:read_body) { |&block| block.call(payload) }
     allow(ENV).to receive(:fetch).with("RECIPES_SOURCE_URL").and_return(source_url)
 
-    expect(RecipeSeeder).to receive(:call) do |source_url:, source_fingerprint:, io_factory:|
+    expect(RecipeImport::Importer).to receive(:new) do |source_url:, source_fingerprint:, io_factory:|
       expect(source_url).to eq("https://example.test/recipes.json.gz")
       expect(source_fingerprint).to eq(Digest::SHA256.hexdigest(payload))
       io_factory.call { |io| expect(io.read).to eq('[{"title":"Soup"}]') }
+      instance_double(RecipeImport::Importer, call: nil)
     end
 
     described_class.perform_now
@@ -30,7 +31,8 @@ RSpec.describe ImportRecipesJob do
 
   it "imports a local file without reading the remote source setting" do
     expect(ENV).not_to receive(:fetch).with("RECIPES_SOURCE_URL")
-    expect(RecipeSeeder).to receive(:call).with(file: "/tmp/recipes.json", source_url: nil)
+    expect(RecipeImport::Importer).to receive(:new).with(file: "/tmp/recipes.json", source_url: nil)
+      .and_return(instance_double(RecipeImport::Importer, call: nil))
 
     described_class.perform_now(file_path: "/tmp/recipes.json")
   end

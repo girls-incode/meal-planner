@@ -8,6 +8,12 @@ RSpec.describe RecipeImport::RecipeValidator do
       expect(described_class.image_url(proxy)).to eq("https://images.media-allrecipes.com/userphotos/123.jpg")
     end
 
+    it "unwraps a proxy URL whose host uses different casing" do
+      proxy = "https://IMAGESVC.MEREDITHCORP.IO/v3/mm/image?url=https%3A%2F%2Fimages.media-allrecipes.com%2Fuserphotos%2F123.jpg"
+
+      expect(described_class.image_url(proxy)).to eq("https://images.media-allrecipes.com/userphotos/123.jpg")
+    end
+
     it "escapes spaces in the original image path" do
       proxy = "https://imagesvc.meredithcorp.io/v3/mm/image?url=https%3A%2F%2Fpublic-assets.meredithcorp.io%2Fphoto%20name.jpg"
 
@@ -22,6 +28,12 @@ RSpec.describe RecipeImport::RecipeValidator do
 
     it "rejects malformed image URLs" do
       expect(described_class.image_url("not a url")).to be_nil
+    end
+
+    it "rejects a proxy URL with malformed percent-encoding in the wrapped url" do
+      proxy = "https://imagesvc.meredithcorp.io/v3/mm/image?url=100%25zz"
+
+      expect(described_class.image_url(proxy)).to be_nil
     end
   end
 
@@ -58,6 +70,17 @@ RSpec.describe RecipeImport::RecipeValidator do
       )
 
       expect(attributes).to include(title: "ARGO® Corn Starch", cuisine: "Cook's Country")
+    end
+
+    it "strips whitespace exposed by HTML markup" do
+      record = {
+        "title" => "<b> Soup </b>", "ingredients" => [ "1 egg" ], "cuisine" => "<i> Home </i>",
+        "category" => "<span> Dinner </span>", "author" => "<em> Alice </em>"
+      }
+
+      expect(described_class.attributes(record)).to include(title: "Soup", cuisine: "Home")
+      expect(described_class.category_name(record)).to eq("Dinner")
+      expect(described_class.author_name(record)).to eq("Alice")
     end
   end
 

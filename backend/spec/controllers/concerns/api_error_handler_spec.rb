@@ -18,8 +18,6 @@ RSpec.describe ApiErrorHandler, type: :controller do
         raise Api::InvalidRequest, "parameter is invalid"
       when "invalid_cursor"
         raise Cursor::InvalidCursor, "cursor is invalid"
-      when "unresolved_input"
-        raise Ingredients::UnresolvedInput.new([ "dragon fruit" ])
       when "argument_error"
         raise ArgumentError, "unexpected bug"
       end
@@ -52,8 +50,7 @@ RSpec.describe ApiErrorHandler, type: :controller do
 
   {
     "invalid_request" => "parameter is invalid",
-    "invalid_cursor" => "cursor is invalid",
-    "unresolved_input" => "Unresolved ingredients: dragon fruit"
+    "invalid_cursor" => "cursor is invalid"
   }.each do |error, message|
     it "renders #{error.tr('_', ' ')} errors" do
       get :index, params: { error: }

@@ -12,20 +12,18 @@ class ImportRecipesJob < ApplicationJob
   GZIP_CONTENT_TYPE = %r{application/(?:gzip|x-gzip)|octet-stream}i
 
   def perform(source_url: nil, file_path: nil)
-    return RecipeSeeder.call(file: file_path, source_url:) if file_path
+    return RecipeImport::Importer.new(file: file_path, source_url:).call if file_path
 
     source_url ||= ENV.fetch("RECIPES_SOURCE_URL")
 
     Tempfile.create([ "recipes", ".json.gz" ], binmode: true) do |compressed|
       download(source_url, compressed)
       compressed.flush
-      # RecipeSeeder makes two passes (catalog then batches). Each pass reads
-      # a bounded JSON payload into memory before parsing it.
-      RecipeSeeder.call(
+      RecipeImport::Importer.new(
         source_url:,
         source_fingerprint: Digest::SHA256.file(compressed.path).hexdigest,
         io_factory: ->(&block) { Zlib::GzipReader.open(compressed.path, &block) }
-      )
+      ).call
     end
   end
 

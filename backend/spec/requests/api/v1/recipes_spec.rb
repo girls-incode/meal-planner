@@ -61,7 +61,27 @@ RSpec.describe 'api/v1/recipes', type: :request do
       post '/api/v1/recipe-matches', headers: { 'CONTENT_TYPE' => 'application/json' }, params: {}.to_json
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body.dig('error', 'message')).to eq('ingredients must be a non-empty array of at most 100 ingredient IDs')
+      expect(response.parsed_body.dig('error', 'message')).to eq('ingredients must be a non-empty array of at most 50 ingredient IDs')
+    end
+
+    it 'rejects non-UUID ingredient IDs and names the invalid ones' do
+      post '/api/v1/recipe-matches',
+        headers: { 'CONTENT_TYPE' => 'application/json' },
+        params: { ingredients: [ 'not-a-uuid', SecureRandom.uuid, '123' ] }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig('error', 'message')).to eq('ingredients must contain UUIDs, got invalid: not-a-uuid, 123')
+    end
+
+    it 'rejects more than 50 ingredient IDs' do
+      ingredients = create_list(:ingredient, 51).map(&:id)
+
+      post '/api/v1/recipe-matches',
+        headers: { 'CONTENT_TYPE' => 'application/json' },
+        params: { ingredients: }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig('error', 'message')).to eq('ingredients must be a non-empty array of at most 50 ingredient IDs')
     end
 
     it 'rejects page-based pagination' do
@@ -75,32 +95,6 @@ RSpec.describe 'api/v1/recipes', type: :request do
     end
   end
 
-  it "filters matches by a known category" do
-    ingredient = create(:ingredient)
-    dinner = create(:category, name: "Dinner")
-    breakfast = create(:category, name: "Breakfast")
-    dinner_recipe = create(:recipe, category: dinner, canonical_ingredient_ids: [ ingredient.id ], required_ingredient_count: 1)
-    breakfast_recipe = create(:recipe, category: breakfast, canonical_ingredient_ids: [ ingredient.id ], required_ingredient_count: 1)
-    create(:recipe_ingredient, recipe: dinner_recipe, ingredient:, raw_text: "1 ingredient")
-    create(:recipe_ingredient, recipe: breakfast_recipe, ingredient:, raw_text: "1 ingredient")
-
-    post "/api/v1/recipe-matches", headers: { "CONTENT_TYPE" => "application/json" },
-      params: { ingredients: [ ingredient.id ], categoryId: dinner.id }.to_json
-
-    expect(response).to have_http_status(:ok)
-    expect(response.parsed_body.fetch("data").map { |recipe| recipe.fetch("id") }).to eq([ dinner_recipe.id ])
-  end
-
-  it "rejects an unknown category filter" do
-    ingredient = create(:ingredient)
-
-    post "/api/v1/recipe-matches", headers: { "CONTENT_TYPE" => "application/json" },
-      params: { ingredients: [ ingredient.id ], categoryId: SecureRandom.uuid }.to_json
-
-    expect(response).to have_http_status(:unprocessable_content)
-    expect(response.parsed_body.dig("error", "message")).to eq("categoryId is unknown")
-  end
-
   path '/api/v1/recipe-matches' do
     post 'Match recipes against selected ingredients' do
       tags 'Recipes'
@@ -110,9 +104,8 @@ RSpec.describe 'api/v1/recipes', type: :request do
         type: :object,
         required: [ 'ingredients' ],
         properties: {
-          ingredients: { type: :array, items: { type: :string, format: :uuid }, minItems: 1, maxItems: 100 },
+          ingredients: { type: :array, items: { type: :string, format: :uuid }, minItems: 1, maxItems: 50 },
           maxMissing: { type: :integer, minimum: 0, maximum: 100 },
-          categoryId: { type: :string, format: :uuid, nullable: true },
           limit: { type: :integer, minimum: 1, maximum: 100 },
           cursor: { type: :string, nullable: true }
         }

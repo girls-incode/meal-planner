@@ -1,9 +1,23 @@
 # typed: true
 # frozen_string_literal: true
 
-# Returns complete matches through the GIN-backed recipe projection before
-# falling back to partial matches through the normalized, ingredient-leading
-# index. Both paths preserve the API's existing ranking: 100% matches first.
+# Finds recipes that can be made from a given set of ingredients, ranking
+# recipes with 100% of their ingredients ("complete matches") above recipes
+# missing a few ("partial matches"). Runs as two separate SQL queries:
+#
+# - complete_matches: recipes where canonical_ingredient_ids is fully
+#   contained in the searched ingredients, via a GIN containment query.
+# - partial_matches: recipes missing between 1 and max_missing ingredients,
+#   via a normalized join that counts how many of the searched ingredients
+#   each recipe actually uses.
+#
+# #call runs complete_matches first and only queries partial_matches if the
+# complete page isn't already full, then concatenates the two Ruby arrays
+# into one page of results. Because complete and partial matches are sorted
+# by different columns (partial matches also rank by match percentage),
+# every row is tagged with a match_phase ("full" or "partial") so that,
+# once the two arrays are combined, RecipeMatchCursor can tell which sort
+# order to resume from when the client asks for the next page.
 class RecipeMatcher
   extend T::Sig
 
@@ -13,26 +27,29 @@ class RecipeMatcher
   sig do
     params(
       ingredient_ids: T::Array[String], max_missing: Integer, limit: Integer,
-      cursor: T.nilable(String), category_id: T.nilable(String)
+      cursor: T.nilable(String)
     ).void
   end
-  def initialize(ingredient_ids:, max_missing: DEFAULT_MAX_MISSING, limit: DEFAULT_LIMIT, cursor: nil, category_id: nil)
+  def initialize(ingredient_ids:, max_missing: DEFAULT_MAX_MISSING, limit: DEFAULT_LIMIT, cursor: nil)
     raise ArgumentError, "ingredient_ids must not be empty" if ingredient_ids.empty?
 
-    @ingredient_ids = ingredient_ids.uniq.sort
+    @ingredient_ids = ingredient_ids
     @max_missing = max_missing
     @limit = limit
     @cursor = cursor
-    @category_id = category_id
   end
 
-  # Loads at most limit + 1 recipes. Complete matches use a GIN containment
-  # query; the normalized partial query runs only if the complete-match phase
-  # leaves room on the page.
+  # Loads at most limit + 1 recipes (the extra row lets the caller detect
+  # whether there's a next page without a separate COUNT query). Complete
+  # matches are fetched first; the partial-match query only runs if there's
+  # still room left on the page, and only requests as many rows as needed to
+  # fill it.
   sig { returns(T::Array[Recipe]) }
   def call
     cursor = decoded_cursor
-    return partial_matches(cursor).to_a if cursor && cursor.fetch("phase") == RecipeMatchCursor::PARTIAL_PHASE
+    # A cursor already in the partial phase means we've moved past all
+    # complete matches on a previous page, so there's no need to re-check them.
+    return partial_matches(cursor).to_a if cursor&.fetch("phase") == RecipeMatchCursor::PARTIAL_PHASE
 
     complete = complete_matches(cursor).to_a
     return complete if complete.size > @limit
@@ -40,8 +57,18 @@ class RecipeMatcher
     complete + partial_matches(nil, limit: @limit + 1 - complete.size).to_a
   end
 
-  # Batched follow-up for detail and match responses. This remains normalized:
-  # it needs the actual Ingredient records, not only the matching projection.
+  # For each of the given recipes, returns the ingredients it still needs
+  # that aren't in the pantry (or, if pantry is nil, aren't in the given
+  # ingredient_ids). Called after #call/RecipesController#show have already
+  # picked which recipes to show, to fill in their "missing ingredients"
+  # list for the API response.
+  #
+  # Runs one query for every recipe passed in, rather than one query per
+  # recipe, to avoid N+1 queries when rendering a whole page of results.
+  #
+  # Needs real Ingredient rows (id and name), which #call's SQL doesn't
+  # return — #call only counts how many ingredients matched, it doesn't
+  # fetch which ones are missing.
   sig do
     params(
       recipe_ids: T::Array[String], pantry: T.nilable(Pantry),
@@ -54,7 +81,7 @@ class RecipeMatcher
     rows = RecipeIngredient
       .joins(:ingredient)
       .where(recipe_id: recipe_ids)
-      .where.not(ingredient_id: available_ids_relation(pantry:, ingredient_ids:))
+      .where.not(ingredient_id: available_ingredient_ids(pantry:, ingredient_ids:))
       .order(:recipe_id, "ingredients.name", "ingredients.id")
       .pluck(:recipe_id, "ingredients.id", "ingredients.name")
 
@@ -67,10 +94,10 @@ class RecipeMatcher
     params(pantry: T.nilable(Pantry), ingredient_ids: T.nilable(T::Array[String]))
       .returns(T.untyped)
   end
-  def self.available_ids_relation(pantry:, ingredient_ids:)
+  def self.available_ingredient_ids(pantry:, ingredient_ids:)
     return pantry.ingredients.select(:id) if pantry
 
-    Ingredient.where(id: ingredient_ids)
+    ingredient_ids
   end
 
   private
@@ -80,13 +107,18 @@ class RecipeMatcher
     return nil if @cursor.blank?
 
     cursor = RecipeMatchCursor.decode(
-      @cursor, ingredient_ids: @ingredient_ids, max_missing: @max_missing, category_id: @category_id
+      @cursor, ingredient_ids: @ingredient_ids, max_missing: @max_missing
     )
     return cursor if RecipeMatchCursor::PHASES.include?(cursor["phase"])
 
     raise Cursor::InvalidCursor, "cursor is invalid"
   end
 
+  # canonical_ingredient_ids is a denormalized copy of each recipe's
+  # ingredient IDs, stored right on the recipe row and GIN-indexed, so "is
+  # every ingredient this recipe needs in the search set" (<@) can be
+  # answered with one fast indexed lookup instead of joining
+  # recipe_ingredients per recipe.
   sig { params(cursor: T.nilable(T::Hash[String, T.untyped])).returns(T.untyped) }
   def complete_matches(cursor)
     scope = Recipe
@@ -101,7 +133,6 @@ class RecipeMatcher
       ])
       .order(Arel.sql(rank_order_sql))
       .limit(@limit + 1)
-    scope = apply_category(scope)
     cursor ? scope.where(RecipeMatchCursor.full_after_sql(cursor:)) : scope
   end
 
@@ -115,7 +146,6 @@ class RecipeMatcher
       .where("recipes.missing_count BETWEEN 1 AND ?", @max_missing)
       .order(Arel.sql(partial_order_sql))
       .limit(limit)
-    scope = apply_category(scope)
     cursor ? scope.where(RecipeMatchCursor.partial_after_sql(cursor:)) : scope
   end
 
@@ -131,8 +161,10 @@ class RecipeMatcher
     SQL
   end
 
-  # Project the match metrics once so the outer query can filter, order, and
-  # paginate using their names instead of restating the calculations.
+  # Builds this SQL as a subquery, rather than inline in partial_matches,
+  # so match_percentage and missing_count can be computed once here and
+  # then just referenced by name in the outer WHERE/ORDER BY/LIMIT. Tags
+  # every row 'partial'.
   sig { returns(String) }
   def partial_match_projection_sql
     <<~SQL.squish
@@ -146,21 +178,19 @@ class RecipeMatcher
     SQL
   end
 
-  # Tiebreak order shared by both phases: ratings, then required_ingredient_
-  # count, then id (the final, always-unique tiebreak). Mirrors
-  # RecipeMatchCursor's rank_after_sql row-comparison tuple exactly: ratings
-  # is coalesced to RecipeMatchCursor::RATINGS_FLOOR and negated so it shares
-  # a single ascending sort with the other two columns, keeping this ORDER
-  # BY and the cursor's WHERE tie-break impossible to drift apart.
+  # Tiebreak order shared by both phases, used whenever recipes are
+  # otherwise equally good matches: highest rating first, then fewest
+  # required ingredients, then id (always unique, so this guarantees a
+  # fully deterministic order with no ties left).
+  #
+  # Ratings is negated so all three columns sort ascending — this lets
+  # RecipeMatchCursor's cursor logic compare them as one tuple.
+  # If this order changes, then update RecipeMatchCursor#rank_after_sql to match,
+  # or pagination will silently skip or repeat rows.
   sig { returns(String) }
   def rank_order_sql
     "-COALESCE(recipes.ratings, #{RecipeMatchCursor::RATINGS_FLOOR}) ASC, " \
     "recipes.required_ingredient_count ASC, recipes.id ASC"
-  end
-
-  sig { params(scope: T.untyped).returns(T.untyped) }
-  def apply_category(scope)
-    @category_id ? scope.where(category_id: @category_id) : scope
   end
 
   sig { returns(String) }
@@ -173,6 +203,10 @@ class RecipeMatcher
     "ROUND(matched.matched_ingredients::numeric / NULLIF(recipes.required_ingredient_count, 0) * 100, 1)"
   end
 
+  # Builds a Postgres uuid[] array literal, e.g. ARRAY['id1', 'id2']::uuid[],
+  # for the <@ and = ANY(...) checks above. Rails' where(column: array)
+  # sugar can't produce this literal form, so it's built by hand; .quote
+  # escapes each id to keep this safe from SQL injection.
   sig { returns(String) }
   def ingredient_ids_array_sql
     ids = @ingredient_ids.map { |id| ActiveRecord::Base.connection.quote(id) }.join(", ")

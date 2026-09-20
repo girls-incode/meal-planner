@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_164623) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -84,6 +84,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_010000) do
     t.string "unit"
     t.datetime "updated_at", null: false
     t.index ["ingredient_id"], name: "index_pantry_items_on_ingredient_id"
+    t.index ["pantry_id", "created_at", "id"], name: "index_pantry_items_on_pantry_and_cursor"
     t.index ["pantry_id", "ingredient_id"], name: "index_pantry_items_on_pantry_and_ingredient", unique: true
     t.index ["pantry_id"], name: "index_pantry_items_on_pantry_id"
   end

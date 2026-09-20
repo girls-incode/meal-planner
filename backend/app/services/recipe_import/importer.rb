@@ -23,6 +23,10 @@ module RecipeImport
 
       @file, @source_url = file, source_url || file.to_s
       @io_factory = io_factory || ->(&block) { File.open(@file, &block) }
+      # Fingerprint used to detect if this exact source was already imported. If not
+      # given here, #fingerprint falls back to hashing @file's contents (SHA256) --
+      # which only works when a real file is present, so io_factory-based imports
+      # (no file on disk) must pass one in explicitly.
       @source_fingerprint = source_fingerprint
       @normalizer = Ingredients::Normalizer.new
       @stats = { recipes: 0, recipes_seen: 0, ingredients_created: 0, recipe_ingredients: 0, parse_failures: 0 }
@@ -51,55 +55,60 @@ module RecipeImport
     sig { returns(String) }
     def fingerprint = @source_fingerprint || Digest::SHA256.file(@file).hexdigest
 
+    # Pass 1: parses and validates every raw record once, buffering the valid ones into
+    # @documents for pass 2 (persist), while collecting every distinct ingredient/category/
+    # author name seen. Resolves compound ingredient splits, then upserts every ingredient
+    # (and, via the two catalog builders below, category/author) the recipes reference, so
+    # pass 2 can bulk-write recipes with every foreign key already resolved.
     sig { returns(T::Array[T.untyped]) }
     def build_catalog
       names = Set.new
       category_names = Set.new
       author_names = Set.new
-      each_record do |raw|
+      @documents = []
+      records.each do |raw|
         @stats[:recipes_seen] += 1
         next unless RecipeValidator.valid?(raw)
 
-        Ingredients::LineParser.call(raw["ingredients"]).first.each { |line| names << line[:name] }
+        lines, issues = Ingredients::LineParser.call(raw["ingredients"])
+        lines.each { |line| names << line[:name] }
         category_name = RecipeValidator.category_name(raw)
         category_names << category_name if category_name
         author_name = RecipeValidator.author_name(raw)
         author_names << author_name if author_name
+        @documents << { attributes: RecipeValidator.attributes(raw), category_name:, author_name:, lines:, issues: }
       end
       @splits = names.to_h { |name| [ name, split(name, names) ] }
       ingredient_names = @splits.values.flatten.to_set
-      catalog = Ingredient.where(name: ingredient_names.to_a).pluck(:name, :id).to_h
-      (ingredient_names - catalog.keys).each_slice(BATCH_SIZE) do |slice|
-        rows = slice.map { |name| { name: } }
-        Ingredient.insert_all(rows, returning: %w[id name], unique_by: :index_ingredients_on_name,
-          record_timestamps: true).each { |row| catalog[row["name"]] = row["id"] }
-        @stats[:ingredients_created] += slice.size
-      end
-      [ catalog, build_category_catalog(category_names), build_author_catalog(author_names) ]
+      catalog, ingredients_created = catalog_for(Ingredient, ingredient_names, :index_ingredients_on_name)
+      @stats[:ingredients_created] += ingredients_created
+      category_catalog, = catalog_for(Category, category_names, :index_categories_on_name)
+      author_catalog, = catalog_for(Author, author_names, :index_authors_on_name)
+      [ catalog, category_catalog, author_catalog ]
     end
 
-    sig { params(names: T.untyped).returns(T.untyped) }
-    def build_category_catalog(names)
-      catalog = Category.where(name: names.to_a).pluck(:name, :id).to_h
+    # Looks up which of `names` already exist for `model`, bulk-creates the rest in bounded
+    # batches, and merges the newly created ids back in, so the returned { name => id } map
+    # covers every needed name (pre-existing and new) with no per-name queries. Also returns
+    # how many rows were newly created.
+    sig { params(model: T.untyped, names: T.untyped, unique_by: Symbol).returns(T.untyped) }
+    def catalog_for(model, names, unique_by)
+      catalog = model.where(name: names.to_a).pluck(:name, :id).to_h
+      created = 0
       (names - catalog.keys).each_slice(BATCH_SIZE) do |slice|
         rows = slice.map { |name| { name: } }
-        Category.insert_all(rows, returning: %w[id name], unique_by: :index_categories_on_name,
+        model.insert_all(rows, returning: %w[id name], unique_by:,
           record_timestamps: true).each { |row| catalog[row["name"]] = row["id"] }
+        created += slice.size
       end
-      catalog
+      [ catalog, created ]
     end
 
-    sig { params(names: T.untyped).returns(T.untyped) }
-    def build_author_catalog(names)
-      catalog = Author.where(name: names.to_a).pluck(:name, :id).to_h
-      (names - catalog.keys).each_slice(BATCH_SIZE) do |slice|
-        rows = slice.map { |name| { name: } }
-        Author.insert_all(rows, returning: %w[id name], unique_by: :index_authors_on_name,
-          record_timestamps: true).each { |row| catalog[row["name"]] = row["id"] }
-      end
-      catalog
-    end
-
+    # Splits a compound "X and Y" name into two ingredients only when both halves are
+    # already known ingredient names elsewhere in this source's corpus, e.g. "salt and black
+    # pepper" -> salt + black pepper. This corpus-derived check (rather than a hardcoded
+    # conjunction list) avoids false splits like "garlic and herb seasoning", where "herb
+    # seasoning" isn't a standalone ingredient on its own.
     sig { params(name: String, names: T.untyped).returns(T::Array[String]) }
     def split(name, names)
       match = COMPOUND.match(name)
@@ -109,41 +118,30 @@ module RecipeImport
       names.include?(left) && names.include?(right) ? [ left, right ] : [ name ]
     end
 
+    # Pass 2: writes the buffered @documents in BATCH_SIZE slices via BatchWriter, one
+    # transaction per batch, accumulating run stats (ingredients written, recipes imported,
+    # parse failures) from each batch's result.
     sig { params(ingredient_catalog: T.untyped, category_catalog: T.untyped, author_catalog: T.untyped).void }
     def persist(ingredient_catalog, category_catalog, author_catalog)
       writer = BatchWriter.new(catalog: ingredient_catalog, categories: category_catalog, authors: author_catalog, splits: @splits,
         import_run: @import_run, parser_version: PARSER_VERSION)
-      each_batch do |batch|
+      @documents.each_slice(BATCH_SIZE) do |batch|
         @stats[:recipe_ingredients] += writer.call(batch)
         @stats[:recipes] += batch.size
         @stats[:parse_failures] += batch.sum { |document| document[:issues].size }
       end
     end
 
-    sig { params(block: T.proc.params(batch: T.untyped).void).void }
-    def each_batch(&block)
-      batch = []
-      each_record do |raw|
-        next unless RecipeValidator.valid?(raw)
-
-        lines, issues = Ingredients::LineParser.call(raw["ingredients"])
-        batch << { attributes: RecipeValidator.attributes(raw), category_name: RecipeValidator.category_name(raw),
-          author_name: RecipeValidator.author_name(raw), lines:, issues: }
-        if batch.size == BATCH_SIZE
-          block.call(batch)
-          batch = []
-        end
-      end
-      block.call(batch) if batch.any?
-    end
-
-    sig { params(block: T.proc.params(record: T.untyped).void).returns(T.untyped) }
-    def each_record(&block)
-      @io_factory.call do |io|
+    # Reads and parses the whole JSON source, memoized since build_catalog is the only
+    # caller but iterates it once regardless. Reads one byte past MAX_SOURCE_BYTES so an
+    # oversized source is rejected without needing to buffer the whole thing to find out.
+    sig { returns(T::Array[T.untyped]) }
+    def records
+      @records ||= @io_factory.call do |io|
         source = io.read(MAX_SOURCE_BYTES + 1)
         raise ArgumentError, "source exceeds #{MAX_SOURCE_BYTES} bytes" if source.bytesize > MAX_SOURCE_BYTES
 
-        JSON.parse(source).each(&block)
+        JSON.parse(source)
       end
     end
 

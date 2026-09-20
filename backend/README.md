@@ -27,7 +27,7 @@ RAILS_ENV=test bin/rails db:prepare
 bin/rails db:seed
 ```
 
-`db:seed` downloads the gzip JSON source configured by `RECIPES_SOURCE_URL` (see `.env.example`). The importer verifies HTTPS and gzip content, limits the compressed download to 20 MB, then parses the expanded JSON payload (limited to 25 MB) twice: once to build catalogs and once to persist recipe batches.
+`db:seed` downloads the gzip JSON source configured by `RECIPES_SOURCE_URL` (see `.env.example`). The importer verifies HTTPS and gzip content, limits the compressed download to 20 MB, then parses the expanded JSON payload (limited to 25 MB) once, buffering validated recipe documents while it builds catalogs before persisting those documents in batches.
 Each run records an `ImportRun`.
 
 To run the same import directly:
@@ -108,7 +108,7 @@ curl -X POST -H "Content-Type: application/json" \
 }
 ```
 
-`limit` defaults to 20 and may be set from 1 to 100. `maxMissing` defaults to 4 and may be set from 0 to 100. An optional `categoryId` must be a known category UUID. The response is an object rather than a bare array:
+`limit` defaults to 20 and may be set from 1 to 100. `maxMissing` defaults to 4 and may be set from 0 to 100. The response is an object rather than a bare array:
 
 ```json
 {
@@ -117,8 +117,8 @@ curl -X POST -H "Content-Type: application/json" \
 }
 ```
 
-Send `nextCursor` as `cursor` to continue. `nextCursor` is `null` on the last page. The cursor is tied to the submitted ingredients, category, and missing threshold, so it cannot be reused for another search. The legacy `page` parameter is not supported.
-
+Send `nextCursor` as `cursor` to continue. `nextCursor` is `null` on the last page. The cursor is tied to the submitted ingredients and missing threshold, so it cannot be reused for another search.
+The `ingredients` array must contain 1 to 50 UUIDs; duplicate IDs are ignored and unknown IDs are rejected.
 `GET /api/v1/categories` and `GET /api/v1/pantry-items` use the same `{ data, nextCursor }` cursor response shape; their `limit` defaults to 20 and is capped at 100. Ingredient search also defaults to 20 and is capped at 20. `POST /api/v1/recipe-matches` uses that response shape as well. Match results
 include category and author objects, match counts and percentage, and the missing ingredients for each returned recipe. Recipe detail returns the author name, parsed ingredient-line metadata, `owned` flags, and missing ingredients for the pantry session.
 
@@ -134,7 +134,7 @@ Because signing already guarantees the payload is ours and unmodified, `decode` 
 - **version** — a cursor signed by a previous deploy, whose payload shape has
   since changed, is still validly signed; `VERSION` is what rejects it.
 - **scope** — a cursor is only meaningful inside the result set it was minted
-  from. Each subclass supplies its own scope: the search query for `IngredientCursor`, the pantry id for `PantryItemCursor`, and the ingredient set + category + missing threshold for `RecipeMatchCursor`. `CategoryCursor` has no scope because its listing is
+  from. Each subclass supplies its own scope: the search query for `IngredientCursor`, the pantry id for `PantryItemCursor`, and the ingredient set + missing threshold for `RecipeMatchCursor`. `CategoryCursor` has no scope because its listing is
   unfiltered.
 
 Field-level type checks on the decoded payload would only re-validate values the app itself wrote one request earlier, so they are deliberately absent. A cursor that fails either check — or whose signature does not verify — raises `Cursor::InvalidCursor`, rescued once in `ApplicationController` into a `422`
@@ -346,7 +346,7 @@ erDiagram
 
 - **`required_ingredient_count` on Recipe** (denormalized): Updated whenever the shared recipe-ingredient writer replaces a recipe's ingredients. Enables filtering "recipes missing ≤ 2 ingredients" without subqueries.
 - **Lowercase ingredient names**: Import and model writes canonicalize names to lowercase; the trigram GIN index on `(name::text)` enables case-insensitive ILIKE search.
-- **`pantry_id` index on pantry_items**: Keeps anonymous pantry reads and item removal efficient.
+- **Pantry cursor index**: `pantry_items(pantry_id, created_at, id)` supports scoped keyset pagination in stable creation order without offset scans.
 - **Recipe-backed picker catalog**: `/ingredients` returns only ingredients referenced by the current recipe import, keeping stale orphaned rows out of the pantry picker.
 - **Two-phase matching read path**: `RecipeMatcher` finds complete matches through the GIN-indexed `recipes.canonical_ingredient_ids` projection, then falls back to the normalized `(ingredient_id, recipe_id)` index only when the page still needs partial matches. Missing ingredients for the limited result page are fetched in one batched query.
 - **Cursor-based pagination**: `GET /api/v1/ingredients`, `GET /api/v1/categories`, `GET /api/v1/pantry-items`, and `POST /api/v1/recipe-matches` return `{ data, nextCursor }`. Pass the opaque `nextCursor` as `cursor` to fetch the next page; `page` is not supported for matching. Cursors are signed and scoped to the search they were minted from — see [Pagination cursors](#pagination-cursors).
@@ -354,7 +354,7 @@ erDiagram
 
 ## Data ingestion
 
-`RecipeSeeder` remains the compatibility entry point; `RecipeImport::Importer` owns the import workflow. It reads and parses the bounded JSON array twice and persists batches of 500 records rather than issuing a query per ingredient line. Re-running it replaces each imported recipe's join rows and refreshes the
+`RecipeImport::Importer` owns the import workflow. It reads and parses the bounded JSON array once, buffers validated documents while building catalogs, and persists those documents in batches of 500 rather than issuing a query per ingredient line. Re-running it replaces each imported recipe's join rows and refreshes the
 canonical-ID projection, so parsing and normalization changes repair existing imports.
 
 ### Ingestion pipeline
@@ -364,7 +364,7 @@ flowchart TD
   S["Configured .json.gz source"]
   D["ImportRecipesJob\nHTTPS download to binary tempfile"]
 
-  subgraph PASS1["Pass 1: Parse JSON and build catalogs"]
+  subgraph PASS1["Parse bounded JSON once and build catalogs"]
     V[Validate recipe]
     L["Ingredients::LineParser\nExtract quantity, unit, and name"]
     N["Ingredients::Normalizer\nCreate canonical ingredient names"]
@@ -372,7 +372,7 @@ flowchart TD
     V --> L --> N --> U
   end
 
-  subgraph PASS2["Pass 2: Parse JSON and persist batches"]
+  subgraph PASS2["Persist buffered documents in batches"]
     R["Upsert recipes"]
     RI["Replace recipe_ingredients\nand canonical projection"]
     R --> RI
@@ -407,8 +407,8 @@ flowchart TD
 
 - `recipe_ingredients` remains the normalized source of truth. The
   GIN-indexed `canonical_ingredient_ids` projection is maintained in the same transaction by `RecipeIngredients::Replace`; direct association writes are not supported.
-- The importer is idempotent and bulk-oriented. It makes two bounded JSON
-  parsing passes over the source (catalogue, then persistence) and records import-run audit data and parser versioning. The remote-import job downloads the gzip source to a binary temporary file before each pass opens it.
+- The importer is idempotent and bulk-oriented. It makes one bounded JSON
+  parsing pass, buffers validated documents for catalog construction, then persists them in batches of 500 while recording import-run audit data and parser versioning. The remote-import job downloads the gzip source to a binary temporary file before the importer reads it.
 - `recipe_ingredients` is intentionally distinct by `(recipe_id,
   ingredient_id)` because matching is availability-based rather than quantity-based. If preserving duplicate source lines becomes a product requirement, introduce a separate ordered ingredient-line model while retaining the distinct relation as the matching projection.
 
@@ -508,6 +508,24 @@ user and the source of truth for match ranking.
 
 This is not part of the current runtime. It would require an embedding provider, a vector-capable PostgreSQL extension and table, background generation/backfill jobs, and a product decision about how semantic candidates interact with exact-match pagination.
 
+## Further improvement: multi-language ingredient parsing
+
+`Ingredients::LineParser` and `Ingredients::Normalizer` are English-only today. `UNIT_PATTERN`, `PREPARATION_WORDS`, `LEADING_DESCRIPTORS`, and the English connective word "of" are hardcoded class constants, and unit singularization relies on Rails' English inflector (`String#singularize`). A non-English source
+recipe would silently fail to match any unit or descriptor and degrade to "the whole line becomes the ingredient name" rather than raising an error.
+
+Supporting other languages would require:
+
+- **Locale as an explicit pipeline input.** Threading a `locale` through `Importer` → `LineParser.new(locale:)` → `Normalizer.new(locale:)`, driven by the import source rather than inferred from ingredient text — language detection on short ingredient strings is unreliable and adds a failure mode that isn't
+  needed if the source already implies its language.
+- **Locale-keyed vocabulary instead of Ruby constants.** Moving `UNIT_PATTERN`, `PREPARATION_WORDS`, and friends into per-locale config (e.g. `config/locales/ingredient_units.<locale>.yml`), loaded and cached per locale. This is still closed-class vocabulary bounded by the language, not a table that grows with
+  the recipe catalog — it is simply duplicated per supported language instead of assuming one.
+- **Avoiding runtime singularization entirely.** Rails' English inflector cannot generalize to other languages, and it is already a source of bugs in English (e.g. its default `-ves → -fe` rule turning "cloves" into "clofe", corrected in `config/initializers/inflections.rb`). A more robust design stores each
+  unit's plural and singular surface forms directly in the locale's unit pattern and maps the matched surface form to its canonical unit via a small per-locale table, rather than deriving the singular at parse time.
+- **Locale-specific structural parsing.** English-specific stopword handling (e.g. dropping the connective "of" between a unit and an ingredient name) does not generalize — other languages place quantity, unit, and modifiers differently. Prefer starting from one shared `LineParser` whose vocabulary and
+  connective words are swapped per locale, and only fork into per-language parser strategies if a language's grammar turns out not to fit that shared structure.
+
+This is not part of the current runtime, which assumes a single English-language source feed.
+
 ### Production deployment
 
 The checked-in `config/deploy.yml` is a Kamal template. Before deploying, replace its server, registry, and proxy values, then provide secrets through your deployment environment:
@@ -535,7 +553,7 @@ app/
                            # IngredientParseError
   serializers/             # lightweight camelCase JSON modules
   services/
-    ingredients/           # LineParser, Normalizer, and ResolveInput
+    ingredients/           # LineParser and Normalizer
     recipe_import/         # Importer, BatchWriter, RecipeValidator
     pantry_items/          # Create, Destroy (publish `pantry.updated`)
     recipe_matcher.rb      # matching algorithm
@@ -543,7 +561,6 @@ app/
     ingredient_cursor.rb, category_cursor.rb,
     pantry_item_cursor.rb, recipe_match_cursor.rb
                            # Cursor subclasses: a purpose + a payload builder
-    recipe_seeder.rb       # compatibility entry point for the importer
 config/
   initializers/pantry_events.rb   # subscribes PantrySubscriber in to_prepare
   initializers/cors.rb            # /api/v1/* only, FRONTEND_ORIGIN in prod
@@ -555,7 +572,7 @@ db/
   seeds.rb
 spec/
   models/                  # Recipe, Ingredient, Author, Category
-  services/                # matcher, seeder, cursor, recipe_import/recipe_validator
+  services/                # matcher, cursor, ingredients/, recipe_import/
   requests/api/v1/         # every endpoint, written in the rswag DSL
   factories/, support/     # FactoryBot factories, QueryCounter for N+1 asserts
 sorbet/                    # Sorbet config and Tapioca-generated RBIs

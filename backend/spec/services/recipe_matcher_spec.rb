@@ -7,7 +7,7 @@ RSpec.describe RecipeMatcher do
     ingredients.each { |ingredient| create(:pantry_item, pantry:, ingredient:) }
   end
 
-  # Mirrors what RecipeSeeder persists: duplicate ingredients collapse to one
+  # Mirrors what RecipeImport::Importer persists: duplicate ingredients collapse to one
   # recipe_ingredient row and the denominator counts distinct ingredients, not
   # source lines. Deriving the count from `.uniq` rather than the raw splat is
   # what lets a caller express a recipe that lists the same ingredient twice.
@@ -18,13 +18,12 @@ RSpec.describe RecipeMatcher do
     recipe
   end
 
-  def match(ingredient_ids:, limit: RecipeMatcher::DEFAULT_LIMIT, max_missing: RecipeMatcher::DEFAULT_MAX_MISSING, cursor: nil,
-    category_id: nil)
-    described_class.new(ingredient_ids:, limit:, max_missing:, cursor:, category_id:).call.to_a.first(limit)
+  def match(ingredient_ids:, limit: RecipeMatcher::DEFAULT_LIMIT, max_missing: RecipeMatcher::DEFAULT_MAX_MISSING, cursor: nil)
+    described_class.new(ingredient_ids:, limit:, max_missing:, cursor:).call.to_a.first(limit)
   end
 
-  def cursor_for(recipe, ingredient_ids, max_missing: RecipeMatcher::DEFAULT_MAX_MISSING, category_id: nil)
-    RecipeMatchCursor.encode(recipe:, ingredient_ids:, max_missing:, category_id:)
+  def cursor_for(recipe, ingredient_ids, max_missing: RecipeMatcher::DEFAULT_MAX_MISSING)
+    RecipeMatchCursor.encode(recipe:, ingredient_ids:, max_missing:)
   end
 
   describe "#call" do
@@ -71,23 +70,6 @@ RSpec.describe RecipeMatcher do
 
       expect {
         match(ingredient_ids: [ beef.id ], limit: 1, cursor:)
-      }.to raise_error(Cursor::InvalidCursor)
-    end
-
-    it "filters matches by category and rejects cursors reused with another category" do
-      chicken = create(:ingredient, name: "chicken")
-      dinner = create(:category, name: "Dinner")
-      breakfast = create(:category, name: "Breakfast")
-      dinner_recipe = recipe_with_ingredients(chicken, title: "Dinner").tap { |recipe| recipe.update!(category: dinner) }
-      recipe_with_ingredients(chicken, title: "Breakfast").update!(category: breakfast)
-      add_to_pantry(chicken)
-
-      result = match(ingredient_ids: [ chicken.id ], category_id: dinner.id, limit: 1)
-      cursor = cursor_for(result.first, [ chicken.id ], category_id: dinner.id)
-
-      expect(result.map(&:id)).to eq([ dinner_recipe.id ])
-      expect {
-        match(ingredient_ids: [ chicken.id ], category_id: breakfast.id, cursor:)
       }.to raise_error(Cursor::InvalidCursor)
     end
 

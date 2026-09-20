@@ -14,3 +14,11 @@
 # ActiveSupport::Inflector.inflections(:en) do |inflect|
 #   inflect.acronym "RESTful"
 # end
+
+# Rails' default -ves -> -fe rule (for "wolves" -> "wolf", "knives" -> "knife")
+# misfires on these recipe-measurement units, which take a plain -f/-fe singular.
+ActiveSupport::Inflector.inflections(:en) do |inflect|
+  inflect.irregular "clove", "cloves"
+  inflect.irregular "leaf", "leaves"
+  inflect.irregular "loaf", "loaves"
+end

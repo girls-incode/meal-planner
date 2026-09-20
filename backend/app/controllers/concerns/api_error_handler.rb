@@ -24,8 +24,7 @@ module ApiErrorHandler
   included do
     rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
     rescue_from ActiveRecord::RecordInvalid, with: :render_record_invalid
-    rescue_from Api::InvalidRequest, Cursor::InvalidCursor, Ingredients::UnresolvedInput,
-      with: :render_invalid_argument
+    rescue_from Api::InvalidRequest, Cursor::InvalidCursor, with: :render_invalid_argument
     rescue_from Api::BadRequest, with: :render_bad_request
   end
 

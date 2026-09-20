@@ -4,6 +4,10 @@
 require "set"
 
 module RecipeImport
+  # Persists one batch of parsed recipe documents (Importer's pass 2) in a single
+  # transaction: upserts recipes, replaces their ingredients via RecipeIngredients::Replace,
+  # and records any parse issues, using catalogs of ingredients/categories/authors/splits
+  # already resolved by Importer during pass 1.
   class BatchWriter
     extend T::Sig
 
@@ -17,17 +21,25 @@ module RecipeImport
 
     sig { params(batch: T.untyped).returns(Integer) }
     def call(batch)
-      recipe_ids, recipe_ingredient_count = ActiveRecord::Base.transaction do
+      ActiveRecord::Base.transaction do
         recipe_ids = upsert_recipes(batch)
-        recipe_ingredient_count = upsert_ingredients(batch, recipe_ids)
-        persist_issues(batch, recipe_ids)
-        [ recipe_ids, recipe_ingredient_count ]
+        documents = batch.filter_map do |document|
+          recipe_id = recipe_ids[recipe_key(document)]
+          [ document, recipe_id ] if recipe_id.present?
+        end
+
+        persist_issues(documents)
+        upsert_ingredients(documents, recipe_ids.values)
       end
-      recipe_ingredient_count
     end
 
     private
 
+    # Bulk upserts recipes on (title, author_id). upsert_all skips Active Record
+    # callbacks, so record_timestamps: true is needed to set created_at/updated_at, and
+    # `returning` is needed to get each row's id back at all. to_h then turns those
+    # returned rows into the { [title, author_id] => id } lookup other methods use to
+    # find a document's recipe_id via recipe_key.
     sig { params(batch: T.untyped).returns(T.untyped) }
     def upsert_recipes(batch)
       rows = batch.map do |document|
@@ -41,20 +53,29 @@ module RecipeImport
         end
     end
 
-    sig { params(batch: T.untyped, recipe_ids: T.untyped).returns(Integer) }
-    def upsert_ingredients(batch, recipe_ids)
-      rows_by_recipe_id = recipe_ids.values.index_with { [] }
-      batch.each do |document|
-        recipe_id = recipe_ids[recipe_key(document)]
-        next if recipe_id.blank?
-
+    # Builds each batch recipe's full recipe_ingredients row set and replaces it via
+    # RecipeIngredients::Replace, which deletes and reinserts based on what's present here.
+    # Every recipe_id is pre-seeded with [] so a recipe whose lines all failed to resolve
+    # still gets its stale ingredients cleared, rather than being skipped and left with
+    # ingredients from a previous import.
+    sig { params(documents: T.untyped, recipe_ids: T.untyped).returns(Integer) }
+    def upsert_ingredients(documents, recipe_ids)
+      rows_by_recipe_id = recipe_ids.index_with { [] }
+      documents.each do |document, recipe_id|
         seen = Set.new
         rows_by_recipe_id[recipe_id] = document[:lines].flat_map { |line| rows_for(line, recipe_id, seen) }
       end
+      # The one place allowed to write recipe_ingredients: deletes each recipe's old rows,
+      # inserts the new ones, and updates the recipe's cached ingredient count/ID list to match.
       RecipeIngredients::Replace.call(rows_by_recipe_id:)
       rows_by_recipe_id.values.sum(&:size)
     end
 
+    # Turns one parsed ingredient line into zero or more recipe_ingredients rows: expands
+    # compound splits (e.g. "salt and pepper" -> salt + pepper), drops names that don't
+    # resolve to a catalog ingredient, and skips ingredients already seen for this recipe.
+    # quantity/unit/preparation/qualifier are only kept when the line wasn't split, since a
+    # compound line can't unambiguously assign one shared quantity/unit to each half.
     sig { params(line: T.untyped, recipe_id: String, seen: T.untyped).returns(T.untyped) }
     def rows_for(line, recipe_id, seen)
       names = @splits.fetch(line[:name], [ line[:name] ])
@@ -68,12 +89,9 @@ module RecipeImport
       end
     end
 
-    sig { params(batch: T.untyped, recipe_ids: T.untyped).void }
-    def persist_issues(batch, recipe_ids)
-      rows = batch.flat_map do |document|
-        recipe_id = recipe_ids[recipe_key(document)]
-        next [] if recipe_id.blank?
-
+    sig { params(documents: T.untyped).void }
+    def persist_issues(documents)
+      rows = documents.flat_map do |document, recipe_id|
         document[:issues].map do |issue|
           { recipe_id:, import_run_id: @import_run.id, original_text: issue[:original_text],
             parser_version: @parser_version, error: issue[:error], created_at: Time.current, updated_at: Time.current }

@@ -14,9 +14,12 @@ module Ingredients
       "½" => 0.5, "⅓" => 1.0 / 3, "⅔" => 2.0 / 3, "¼" => 0.25, "¾" => 0.75,
       "⅕" => 0.2, "⅙" => 1.0 / 6, "⅛" => 0.125, "⅜" => 0.375, "⅝" => 0.625, "⅞" => 0.875
     }.freeze
-    QUANTITY_PREFIX = /\A\s*[\d.\/½⅓⅔¼¾⅕⅙⅛⅜⅝⅞]+\s+/.freeze
+    FRACTION_CHARS = UNICODE_FRACTIONS.keys.join.freeze
+    QUANTITY_CHARACTERS = "\\d.\\/⁄#{FRACTION_CHARS}".freeze
+    # Matches a parenthetical aside at the start of a name, e.g. "(packed) brown sugar", so it can be stripped.
     LEADING_COMMENT = /\A\([^)]+\)\s*/.freeze
-    QUANTITY_PATTERN = /[\d.\/⁄\s½⅓⅔¼¾⅕⅙⅛⅜⅝⅞]+/.freeze
+    QUANTITY_PATTERN = /[#{QUANTITY_CHARACTERS}\s]+/.freeze
+    QUANTITY_WITH_SEPARATOR = /\A\s*[#{QUANTITY_CHARACTERS}\s]+\s\z/.freeze
     UNIT_PATTERN = %r{
       cups?|tablespoons?|tbsp|teaspoons?|tsp|ounces?|oz|pounds?|lbs?|packages?|cans?
       |grams?|g|kilograms?|kg|milligrams?|mg|milliliters?|ml|liters?|cloves?
@@ -27,8 +30,8 @@ module Ingredients
     }xi.freeze
     INGREDIENT_LINE = %r{
       \A\s*(?<quantity>#{QUANTITY_PATTERN})?\s*
-      (?:\((?<comment>[^)]+)\)\s*)?
-      (?<unit>#{UNIT_PATTERN})?(?:of\s+)?(?<name>.+)\z
+      (?:\([^)]+\)\s*)?
+      (?:(?<unit>#{UNIT_PATTERN})(?=\s|\z))?\s*(?:of\s+)?(?<name>.+)\z
     }xi.freeze
 
     sig { params(raw_lines: T::Array[T.untyped]).returns(T.untyped) }
@@ -45,39 +48,41 @@ module Ingredients
     def call(raw_lines)
       Array(raw_lines).each_with_object([ [], [] ]) do |raw_text, (lines, issues)|
         text = raw_text.to_s
+
         if raw_text.blank?
           issues << { original_text: text, error: "ingredient line is blank" }
-          next
-        end
-
-        if text.length > MAX_LENGTH
+        elsif text.length > MAX_LENGTH
           issues << { original_text: text.first(MAX_LENGTH), error: "ingredient line exceeds #{MAX_LENGTH} characters" }
-          next
+        else
+          line = parse(text)
+          name = @normalizer.call(line[:name])
+          if name.blank?
+            issues << { original_text: text, error: "ingredient name is blank" }
+          else
+            lines << line.merge(name:, raw_text: text)
+          end
         end
-
-        line = parse(text)
-        name = @normalizer.call(line[:name])
-        if name.blank?
-          issues << { original_text: text, error: "ingredient name is blank" }
-          next
-        end
-
-        lines << line.merge(name:, raw_text: text)
       end
     end
 
     private
 
+    # Splits a raw line into quantity, unit, name, preparation, and qualifier.
+    # Measurements must be whitespace-delimited, so plain names such as
+    # "garlic" are not mistaken for the "g" unit. Final catalog-name
+    # normalization happens in #call after this structural parsing.
     sig { params(text: String).returns(T::Hash[Symbol, T.untyped]) }
     def parse(text)
       match = INGREDIENT_LINE.match(text)
       return { quantity: nil, unit: nil, preparation: nil, qualifier: nil, name: text } unless match
 
       unit = match[:unit].to_s.downcase.singularize.presence
-      name = unit.present? || text.match?(QUANTITY_PREFIX) ? match[:name].to_s.strip.sub(LEADING_COMMENT, "") : text
+      has_measurement = unit.present? || match[:quantity].to_s.match?(QUANTITY_WITH_SEPARATOR)
+      name = has_measurement ? match[:name].to_s.strip.sub(LEADING_COMMENT, "") : text
       { quantity: unit && parse_quantity(match[:quantity]), unit:, name:, **extract_modifiers(name) }
     end
 
+    # Extracts preparation and qualifier metadata from name segments.
     sig { params(name: String).returns(T::Hash[Symbol, T.nilable(String)]) }
     def extract_modifiers(name)
       segments = name.downcase.split(Normalizer::SEGMENT_SEPARATOR).reject(&:blank?)
@@ -92,6 +97,7 @@ module Ingredients
       { preparation:, qualifier: }
     end
 
+    # Sums mixed-number parts (e.g. "1 1/2" or "1 ½") into a single Float.
     sig { params(text: T.nilable(String)).returns(T.nilable(Float)) }
     def parse_quantity(text)
       return nil if text.blank?
@@ -101,9 +107,8 @@ module Ingredients
         next UNICODE_FRACTIONS[part] if UNICODE_FRACTIONS.key?(part)
         next part.to_f unless part.include?("/")
 
-        fraction = part.split("/").map(&:to_f)
-        denominator = fraction.fetch(1)
-        denominator.zero? ? 0.0 : fraction.fetch(0) / denominator
+        numerator, denominator = part.split("/").map(&:to_f)
+        denominator.zero? ? 0.0 : numerator / denominator
       end
     end
   end

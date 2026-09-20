@@ -45,12 +45,12 @@ module RecipeImport
 
     sig { params(value: T.untyped).returns(T.nilable(String)) }
     def self.unescaped(value)
-      unescape_html(value.to_s.strip).presence
+      unescape_html(value.to_s).strip.presence
     end
 
     sig { params(value: String).returns(String) }
     def self.title(value)
-      unescape_html(value.strip)
+      unescape_html(value).strip
     end
 
     # CGI.unescapeHTML only decodes amp/lt/gt/quot/apos, so named entities like
@@ -66,14 +66,14 @@ module RecipeImport
     sig { params(value: T.untyped).returns(T.nilable(String)) }
     def self.image_url(value)
       uri = URI.parse(value.to_s)
-      if uri.host == IMAGE_PROXY_HOST && uri.path == IMAGE_PROXY_PATH
+      if uri.host&.casecmp?(IMAGE_PROXY_HOST) && uri.path == IMAGE_PROXY_PATH
         encoded_url = URI.decode_www_form(uri.query.to_s).to_h["url"]
         value = URI::DEFAULT_PARSER.escape(URI.decode_www_form_component(encoded_url.to_s))
         uri = URI.parse(value)
       end
 
       value if uri.is_a?(URI::HTTP) && uri.host.present? && value.length <= MAX_IMAGE_URL_LENGTH
-    rescue URI::InvalidURIError
+    rescue URI::InvalidURIError, ArgumentError
       nil
     end
 

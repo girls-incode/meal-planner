@@ -25,10 +25,11 @@ module Api
       def create
         ingredient_id = params[:ingredientId]
         raise Api::InvalidRequest, "ingredientId must be a UUID" unless uuid?(ingredient_id)
-        raise Api::InvalidRequest, "ingredientId is unknown" unless Ingredient.exists?(id: ingredient_id)
+        ingredient = Ingredient.find_by(id: ingredient_id)
+        raise Api::InvalidRequest, "ingredientId is unknown" unless ingredient
 
         pantry_item = PantryItems::Create.call(pantry: current_pantry, ingredient_id:)
-        response.set_header("Location", "/api/v1/pantry-items/#{pantry_item.id}")
+        pantry_item.ingredient = ingredient
         render json: PantryItemSerializer.as_json(pantry_item), status: :created
       end
 

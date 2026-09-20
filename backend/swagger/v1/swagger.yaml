@@ -326,10 +326,6 @@ paths:
                   type: integer
                   minimum: 0
                   maximum: 100
-                categoryId:
-                  type: string
-                  format: uuid
-                  nullable: true
                 limit:
                   type: integer
                   minimum: 1

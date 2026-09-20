@@ -36,15 +36,13 @@ class RecipeMatchCursor < Cursor
   # ingredient_ids   - the searched ingredient ids, used to scope the cursor
   #                    to this exact search
   # max_missing      - the search's max_missing filter, also part of the scope
-  # category_id      - the search's category filter, also part of the scope
   #
   # Returns the signed, opaque cursor string.
   # Raises ArgumentError if the recipe's match_phase isn't a known phase.
   sig do
-    params(recipe: T.untyped, ingredient_ids: T::Array[String], max_missing: Integer,
-      category_id: T.nilable(String)).returns(String)
+    params(recipe: T.untyped, ingredient_ids: T::Array[String], max_missing: Integer).returns(String)
   end
-  def self.encode(recipe:, ingredient_ids:, max_missing:, category_id: nil)
+  def self.encode(recipe:, ingredient_ids:, max_missing:)
     phase = recipe.match_phase.to_s
     raise ArgumentError, "recipe match phase is invalid" unless PHASES.include?(phase)
 
@@ -59,27 +57,26 @@ class RecipeMatchCursor < Cursor
       payload["missing_count"] = recipe.missing_count.to_i
     end
 
-    encode_signed(payload, scope: scope_for(ingredient_ids:, max_missing:, category_id:))
+    encode_signed(payload, scope: scope_for(ingredient_ids:, max_missing:))
   end
 
   # Verifies and decodes a cursor string, scoped to the same search that must
-  # have minted it. A cursor encoded for different ingredient_ids,
-  # max_missing, or category_id is rejected, so a client can't replay a
-  # cursor against a different search than the one that produced it.
+  # have minted it. A cursor encoded for different ingredient_ids or
+  # max_missing is rejected, so a client can't replay a cursor against a
+  # different search than the one that produced it.
   #
   # value           - the cursor string returned by encode
   # ingredient_ids  - the current search's ingredient ids
   # max_missing     - the current search's max_missing filter
-  # category_id     - the current search's category filter
   #
   # Returns the decoded payload hash.
   # Raises Cursor::InvalidCursor if the signature, version, or scope doesn't match.
   sig do
-    params(value: T.anything, ingredient_ids: T::Array[String], max_missing: Integer,
-      category_id: T.nilable(String)).returns(T::Hash[String, T.untyped])
+    params(value: T.anything, ingredient_ids: T::Array[String], max_missing: Integer)
+      .returns(T::Hash[String, T.untyped])
   end
-  def self.decode(value, ingredient_ids:, max_missing:, category_id: nil)
-    decode_signed(value, scope: scope_for(ingredient_ids:, max_missing:, category_id:))
+  def self.decode(value, ingredient_ids:, max_missing:)
+    decode_signed(value, scope: scope_for(ingredient_ids:, max_missing:))
   end
 
   # WHERE-clause fragment for resuming a full-match page: full matches are
@@ -124,15 +121,14 @@ class RecipeMatchCursor < Cursor
   #
   # ingredient_ids  - the search's ingredient ids (sorted, for order-independence)
   # max_missing     - the search's max_missing filter
-  # category_id     - the search's category filter
   #
   # Returns the scope hash passed to encode_signed/decode_signed.
   sig do
-    params(ingredient_ids: T::Array[String], max_missing: Integer, category_id: T.nilable(String))
+    params(ingredient_ids: T::Array[String], max_missing: Integer)
       .returns(T::Hash[String, T.untyped])
   end
-  def self.scope_for(ingredient_ids:, max_missing:, category_id:)
-    { "ingredients" => ingredient_ids.to_a.sort, "max_missing" => max_missing, "category_id" => category_id }
+  def self.scope_for(ingredient_ids:, max_missing:)
+    { "ingredients" => ingredient_ids.to_a.sort, "max_missing" => max_missing }
   end
 
   # WHERE-clause fragment for the tiebreak chain shared by both phases:
