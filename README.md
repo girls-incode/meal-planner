@@ -6,6 +6,7 @@ Recipe Finder helps people decide what to cook from the ingredients they have at
 <img src="./images/meal-planner-1.png" width="60%"/>
 <img src="./images/meal-planner-2.png" width="60%"/>
 <img src="./images/meal-planner-3.png" width="60%"/>
+<img src="./images/meal-planner-4.png" width="60%"/>
 
 ## Application
 
