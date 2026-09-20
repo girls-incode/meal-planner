@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ApiErrorAlert } from "@/components/ApiErrorAlert";
-import type { Ingredient } from "@/api/types";
 import { IngredientSearch } from "@/features/pantry/components/IngredientSearch";
 import { PantryIngredients } from "@/features/pantry/components/PantryIngredients";
 import type { PantryWorkspaceContext } from "@/features/pantry/context";
-import { useAddPantryItem, usePantry, useRemovePantryItem } from "@/features/pantry/hooks/usePantry";
+import {
+  useAddPantryItem,
+  usePantry,
+  useRemovePantryItem,
+} from "@/features/pantry/hooks/usePantry";
 
 export function PantryWorkspace() {
   const { pathname } = useLocation();
@@ -13,22 +16,21 @@ export function PantryWorkspace() {
   const { data: pantryItems = [] } = usePantry();
   const addPantryItem = useAddPantryItem();
   const removePantryItem = useRemovePantryItem();
-  const [recipeSearch, setRecipeSearch] = useState<{ ingredientIds: string[]; version: number } | null>(null);
+  const [recipeSearch, setRecipeSearch] = useState<{
+    ingredientIds: string[];
+    version: number;
+  } | null>(null);
   const showsIngredientSearch = pathname === "/" || pathname === "/recipes";
-
-  function handleAdd(ingredient: Ingredient) {
-    addPantryItem.mutate(ingredient.id);
-  }
-
-  function handleRemove(itemId: string) {
-    removePantryItem.mutate(itemId);
-  }
+  const pantryIngredientIds = pantryItems.map((item) => item.ingredient.id);
 
   function handleFindRecipes() {
-    if (pantryItems.length === 0) return;
+    if (!pantryItems.length) return;
 
     setRecipeSearch((previousSearch) => ({
-      ingredientIds: pantryItems.map((item) => item.ingredient.id),
+      ingredientIds: pantryIngredientIds,
+      // Bumped on every click so consumers can detect a new search even when
+      // ingredientIds is unchanged from the previous one (e.g. re-clicking
+      // "Find Recipes" with the same pantry contents).
       version: (previousSearch?.version ?? 0) + 1,
     }));
     navigate("/recipes");
@@ -47,14 +49,14 @@ export function PantryWorkspace() {
       {showsIngredientSearch && (
         <div className="mx-auto max-w-2xl px-4 pt-6">
           <IngredientSearch
-            onAdd={handleAdd}
-            excludeIds={pantryItems.map((item) => item.ingredient.id)}
+            onAdd={(ingredient) => addPantryItem.mutate(ingredient.id)}
+            excludeIds={pantryIngredientIds}
           />
           {pathname === "/recipes" && (
             <PantryIngredients
               className="mt-4"
               items={pantryItems}
-              onRemove={handleRemove}
+              onRemove={(itemId) => removePantryItem.mutate(itemId)}
               onFindRecipes={handleFindRecipes}
               isAdding={addPantryItem.isPending}
               isRemoving={removePantryItem.isPending}

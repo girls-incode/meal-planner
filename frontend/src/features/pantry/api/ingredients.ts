@@ -1,5 +1,10 @@
 import { apiClient } from "@/api/client";
-import type { Ingredient, IngredientsPage } from "@/api/types";
+import type { Ingredient } from "@/api/types";
+
+interface IngredientsPage {
+  data: Ingredient[];
+  nextCursor: string | null;
+}
 
 export function searchIngredients(query: string): Promise<Ingredient[]> {
   const params = new URLSearchParams({ q: query, limit: "20" });

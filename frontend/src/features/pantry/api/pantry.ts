@@ -1,5 +1,10 @@
 import { apiClient } from "@/api/client";
-import type { PantryItem, PantryItemsPage } from "@/api/types";
+import type { PantryItem } from "@/api/types";
+
+interface PantryItemsPage {
+  data: PantryItem[];
+  nextCursor: string | null;
+}
 
 export async function getPantry(signal?: AbortSignal): Promise<PantryItem[]> {
   const items: PantryItem[] = [];

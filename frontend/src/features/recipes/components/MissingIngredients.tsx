@@ -6,8 +6,15 @@ interface MissingIngredientsProps {
   count: number;
 }
 
-export function MissingIngredients({ ingredients, count }: MissingIngredientsProps) {
-  if (ingredients.length === 0) return null;
+const DISPLAY_LIMIT = 3;
+
+export function MissingIngredients({
+  ingredients,
+  count,
+}: MissingIngredientsProps) {
+  if (!ingredients.length) return null;
+
+  const hasMoreIngredients = ingredients.length - DISPLAY_LIMIT;
 
   return (
     <div className="rounded-lg bg-accent/10 p-2">
@@ -15,14 +22,21 @@ export function MissingIngredients({ ingredients, count }: MissingIngredientsPro
         Missing {count} ingredient{count === 1 ? "" : "s"}
       </p>
       <div className="flex flex-wrap gap-1">
-        {ingredients.slice(0, 3).map((ingredient) => (
-          <Badge key={ingredient.id} variant="secondary" className="bg-accent/30 text-accent-foreground">
+        {ingredients.slice(0, DISPLAY_LIMIT).map((ingredient) => (
+          <Badge
+            key={ingredient.id}
+            variant="secondary"
+            className="bg-accent/30 text-accent-foreground"
+          >
             {ingredient.name}
           </Badge>
         ))}
-        {ingredients.length > 3 && (
-          <Badge variant="secondary" className="bg-accent/30 text-accent-foreground">
-            +{ingredients.length - 3} more
+        {hasMoreIngredients > 0 && (
+          <Badge
+            variant="secondary"
+            className="bg-accent/30 text-accent-foreground"
+          >
+            +{hasMoreIngredients} more
           </Badge>
         )}
       </div>

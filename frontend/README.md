@@ -59,6 +59,7 @@ pnpm dev          # start Vite with HMR
 pnpm test         # run Vitest once
 pnpm test:watch   # run Vitest in watch mode
 pnpm lint         # run oxlint
+pnpm typecheck    # run tsc -b with no emit
 pnpm build        # type-check and create a production build
 pnpm preview      # serve the production build locally
 ```
@@ -218,25 +219,28 @@ src/
 ├── App.tsx / App.test.tsx
 ├── api/
 │   ├── client.ts / client.test.tsx    # fetch, session header, ApiError
-│   └── types.ts                       # API response types
+│   └── types.ts                       # shared API response types (used by 2+ features)
 ├── components/                        # shared UI and shared tests
 │   ├── ApiErrorAlert.tsx              # inline ApiError display
 │   ├── AppErrorBoundary.tsx           # app-wide render error fallback
 │   ├── AppHeader.tsx, EmptyState.tsx, Loader.tsx
-│   └── ui/                            # button, card, badge, input primitives
+│   └── ui/                            # button, card, badge, input primitives (shadcn/ui)
 ├── features/
-│   ├── categories/{api,components,hooks}
+│   ├── categories/{api,components,hooks}  # LatestCategories
 │   ├── pantry/
 │   │   ├── api/                       # pantry.ts (items), ingredients.ts (search)
-│   │   ├── components/                # IngredientSearch, PantryWorkspace
+│   │   ├── components/                # IngredientSearch, IngredientChip,
+│   │   │                               # PantryIngredients, PantryWorkspace
+│   │   ├── context.ts                 # useOutletContext for PantryWorkspace
 │   │   ├── hooks/                     # usePantry, useIngredientSearch
 │   │   └── pages/                     # PantryPage
 │   └── recipes/
 │       ├── api/
-│       ├── components/                # cards, metadata, image, ingredients
+│       ├── components/                # cards, metadata, image, ingredients, rating
 │       ├── hooks/                     # matches, detail, infinite scroll
 │       └── pages/                     # RecipesPage, RecipeDetailPage
 ├── layouts/AppLayout.tsx
+├── lib/utils.ts                       # cn() class-name helper (clsx + tailwind-merge)
 ├── routes/AppRoutes.tsx
 ├── test/                              # setup, render helpers, factories
 └── main.tsx                            # providers and browser router

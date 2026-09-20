@@ -43,18 +43,3 @@ export interface RecipeMatchesPage {
   data: RecipeMatch[];
   nextCursor: string | null;
 }
-
-export interface CategoriesPage {
-  data: NamedEntity[];
-  nextCursor: string | null;
-}
-
-export interface IngredientsPage {
-  data: Ingredient[];
-  nextCursor: string | null;
-}
-
-export interface PantryItemsPage {
-  data: PantryItem[];
-  nextCursor: string | null;
-}

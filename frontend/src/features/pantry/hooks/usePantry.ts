@@ -2,14 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addPantryItem, getPantry, removePantryItem } from "@/features/pantry/api/pantry";
 
 export const pantryQueryKey = ["pantry"] as const;
-const PANTRY_STALE_TIME = 60_000;
+const PANTRY_STALE_TIME = 60_000; // 1min
 
 export function usePantry() {
   return useQuery({
     queryKey: pantryQueryKey,
     queryFn: ({ signal }) => getPantry(signal),
-    // Mutations invalidate this query immediately. Between mutations, avoid
-    // refetching the same pantry whenever a route-level observer remounts.
+    // Adding/removing items already invalidates this query via onSettled below,
+    // so the cache is refetched right when the pantry actually changes. This
+    // staleTime just stops *redundant* refetches in between: navigating across
+    // routes (e.g. "/" <-> "/recipes") remounts usePantry() each time, and
+    // without a staleTime that would refetch unchanged data on every remount.
     staleTime: PANTRY_STALE_TIME,
   });
 }

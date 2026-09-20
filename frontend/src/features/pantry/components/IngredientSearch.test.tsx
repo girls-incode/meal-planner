@@ -70,12 +70,10 @@ describe("IngredientSearch", () => {
   });
 
   it("hides ingredients listed in excludeIds", async () => {
-    // makeIngredients assigns ids i1 and i2 in order.
-    vi.spyOn(ingredientsApi, "searchIngredients").mockResolvedValue(
-      makeIngredients("Egg", "Egg White"),
-    );
+    const [egg, eggWhite] = makeIngredients("Egg", "Egg White");
+    vi.spyOn(ingredientsApi, "searchIngredients").mockResolvedValue([egg, eggWhite]);
 
-    const { user } = renderSearch({ excludeIds: ["i2"] });
+    const { user } = renderSearch({ excludeIds: [eggWhite.id] });
     await user.type(input(), "egg");
 
     expect(await screen.findByRole("button", { name: "Egg" })).toBeInTheDocument();

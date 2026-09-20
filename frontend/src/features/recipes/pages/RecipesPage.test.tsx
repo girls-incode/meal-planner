@@ -16,6 +16,10 @@ function renderPage(
   );
 }
 
+function mockPantry() {
+  vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+}
+
 describe("RecipesPage", () => {
   it("shows a loading state while the pantry is being fetched", () => {
     vi.spyOn(pantryApi, "getPantry").mockReturnValue(new Promise(() => {}));
@@ -36,7 +40,7 @@ describe("RecipesPage", () => {
   });
 
   it("waits for Find recipes before fetching matches", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    mockPantry();
     const getRecipeMatches = vi.spyOn(recipesApi, "getRecipeMatches");
 
     renderPage(null);
@@ -48,7 +52,7 @@ describe("RecipesPage", () => {
   });
 
   it("renders the recipes from the response's data array", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    mockPantry();
     vi.spyOn(recipesApi, "getRecipeMatches").mockResolvedValue(
       makeMatchesPage([makeRecipeMatch({ title: "Golden Sweet Cornbread" })]),
     );
@@ -61,7 +65,7 @@ describe("RecipesPage", () => {
   });
 
   it("renders the page when the response carries a nextCursor", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    mockPantry();
     vi.spyOn(recipesApi, "getRecipeMatches").mockResolvedValue(
       makeMatchesPage(
         [makeRecipeMatch({ title: "Golden Sweet Cornbread" })],
@@ -77,7 +81,7 @@ describe("RecipesPage", () => {
   });
 
   it("shows the empty-matches state when the response data array is empty", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    mockPantry();
     vi.spyOn(recipesApi, "getRecipeMatches").mockResolvedValue(
       makeMatchesPage([]),
     );
@@ -93,7 +97,7 @@ describe("RecipesPage", () => {
   });
 
   it("surfaces the API error message when the matches request fails", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    mockPantry();
     vi.spyOn(recipesApi, "getRecipeMatches").mockRejectedValue(
       new ApiError(422, "ingredients contains unknown ingredients"),
     );
@@ -106,7 +110,7 @@ describe("RecipesPage", () => {
   });
 
   it("falls back to a generic message when the error is not an ApiError", async () => {
-    vi.spyOn(pantryApi, "getPantry").mockResolvedValue(makePantry("Egg"));
+    mockPantry();
     vi.spyOn(recipesApi, "getRecipeMatches").mockRejectedValue(
       new Error("network error"),
     );

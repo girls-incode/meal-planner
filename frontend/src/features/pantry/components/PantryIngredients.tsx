@@ -23,7 +23,9 @@ export function PantryIngredients({
     <section className={className}>
       {items.length > 0 && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Your ingredients</h2>
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Your ingredients
+          </h2>
           <div className="flex flex-wrap gap-2">
             {items.map((item) => (
               <IngredientChip
@@ -40,7 +42,7 @@ export function PantryIngredients({
       <Button
         type="button"
         onClick={onFindRecipes}
-        disabled={items.length === 0 || isAdding}
+        disabled={!items.length || isAdding}
         size="lg"
         className="mt-6 w-full"
       >
