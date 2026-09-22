@@ -1,6 +1,6 @@
 # Recipe Finder
 
-Recipe Finder helps people decide what to cook from the ingredients they have at home. They can search the ingredient catalogue, build an anonymous pantry, and find recipes ordered by ingredient coverage, then by fewer missing ingredients and rating.
+Recipe Finder helps people decide what to cook from the ingredients they have at home. They can search the ingredient catalogue, build an anonymous pantry, and find recipes ranked by ingredient coverage percentage (highest first), then by fewest missing ingredients, then by rating (highest first).
 
 <img src="./images/meal-planner.png" width="60%"/>
 <img src="./images/meal-planner-1.png" width="60%"/>
@@ -44,14 +44,14 @@ flowchart LR
   S --> J[JSON response]
   J --> C
 
-  S -->|recipe matches| X[Rank: coverage, fewer missing matching, rating]
+  S -->|recipe matches| X[Rank: coverage %, fewer missing, rating, fewer ingredients, id]
 ```
 
 The backend imports the recipe catalogue into normalized recipe and ingredient records. Pantry endpoints use a device-local anonymous session, while recipe matches can be calculated directly from submitted ingredient IDs.
 
 ## Backend API
 
-The API is served under `/api/v1`. Pantry endpoints require an
+The API is served under `/api/v1`. Pantry endpoints and `/recipes/:id` require an
 `X-Pantry-Session` header containing a client-generated UUID.
 
 | Method | Path | Purpose |

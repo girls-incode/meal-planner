@@ -48,9 +48,7 @@ From the repository root, start the complete development stack:
 docker compose up --build
 ```
 
-Compose starts Vite at `http://localhost:5173` and points the browser bundle
-at the Rails API on `http://localhost:3000`. The frontend `src` and `public`
-directories are bind-mounted, so edits reload through Vite's HMR server.
+Compose starts Vite at `http://localhost:5173` and the Rails API on `http://localhost:3000`.
 
 ## Scripts
 
@@ -66,10 +64,7 @@ pnpm preview      # serve the production build locally
 
 ## Docker deployment
 
-The included multi-stage `Dockerfile` builds the Vite bundle and serves it
-with unprivileged Nginx on port 8080. It caches fingerprinted assets for one
-year and sends unknown paths to `index.html`, which keeps client-side routes
-such as `/recipes/:id` working after a direct request or browser refresh.
+The included multi-stage `Dockerfile` builds the Vite bundle and serves it with unprivileged Nginx on port 8080. It caches fingerprinted assets for one year and sends unknown paths to `index.html`, which keeps client-side routes such as `/recipes/:id` working after a direct request or browser refresh.
 
 ```bash
 docker build \
@@ -79,17 +74,11 @@ docker build \
 docker run --rm -p 8080:8080 meal-planner-frontend
 ```
 
-`VITE_API_BASE_URL` is compiled into the browser bundle, not read when the
-container starts. Build a new image for each API URL. Configure the backend's
-`FRONTEND_ORIGIN` with the public frontend origin so its CORS policy permits
-the browser requests.
+`VITE_API_BASE_URL` is compiled into the browser bundle, not read when the container starts. Build a new image for each API URL. Configure the backend's `FRONTEND_ORIGIN` with the public frontend origin so its CORS policy permits the browser requests.
 
 ## Routes and state
 
-`AppRoutes` renders all routes inside `AppLayout` and
-`PantryWorkspace`. The workspace owns selected ingredient IDs and a
-`searchVersion`, so it stays mounted for both the recipe list and detail
-page. Returning from detail therefore does not reset the search.
+`AppRoutes` renders all routes inside `AppLayout` and `PantryWorkspace`. The workspace owns selected ingredient IDs and a `searchVersion`, so it stays mounted for both the recipe list and detail page. Returning from detail therefore does not reset the search.
 
 ```mermaid
 flowchart TD
@@ -103,9 +92,6 @@ flowchart TD
   E -->|Open RecipeCard| F
   F -->|Back to recipes| E
 ```
-
-The ingredient search is displayed on `/` and `/recipes`, but hidden on
-`/recipes/:id`. The workspace itself remains mounted in every case.
 
 ## Main workflow
 
@@ -136,17 +122,11 @@ sequenceDiagram
   Cache-->>UI: Reuse current match result
 ```
 
-Recipe matching happens only after **Find recipes** is pressed. Changing the
-pantry does not replace an already displayed match snapshot; pressing the
-button again deliberately creates a new search.
+Recipe matching happens only after **Find recipes** is pressed. Changing the pantry does not replace an already displayed match snapshot; pressing the button again deliberately creates a new search.
 
 ## API integration
 
-`src/api/client.ts` is the shared fetch wrapper. It sends and expects
-camelCase JSON, turns failed responses into `ApiError`, and includes
-`X-Pantry-Session` on every request. The client stores the session UUID in
-`localStorage` under `pantry_session_token`; clearing browser storage starts
-a new pantry.
+`src/api/client.ts` is the shared fetch wrapper. It sends and expects camelCase JSON, turns failed responses into `ApiError`, and includes `X-Pantry-Session` on every request. The client stores the session UUID in `localStorage` under `pantry_session_token`; clearing browser storage starts a new pantry.
 
 | Feature | Backend request | Purpose |
 | --- | --- | --- |
@@ -268,9 +248,9 @@ pnpm build
 
 ## Deployment
 
-```bash
-cd /home/violeta/projects/pennylane/girls-incode
+From the repository root:
 
+```bash
 sudo docker build \
   --build-arg VITE_API_BASE_URL=http://localhost:3000 \
   -t meal-planner-frontend:test \

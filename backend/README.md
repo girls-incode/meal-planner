@@ -64,8 +64,6 @@ docker run -d --name backend -p 80:80 \
   backend
 ```
 
-The container listens on port 80 and runs `db:prepare` before starting the Rails server. Run it behind a TLS-terminating proxy in production; production Rails has HTTPS enforcement enabled. The image contains the exact-match relational matcher and does not require embedding or external search services.
-
 ### Endpoints
 
 | Method | Path | Description |
@@ -93,8 +91,6 @@ curl -X POST -H "Content-Type: application/json" \
 
 `X-Pantry-Session` must be a UUID. Recipe matching does not require a pantry session because ingredient IDs can be submitted directly. It identifies an anonymous pantry rather than an account; treat it as a bearer capability. The first valid pantry request creates that session's empty pantry when needed.
 
-`POST /api/v1/pantry-items` accepts only `ingredientId`. Its response includes the nullable `quantity` and `unit` fields, which are not yet writable through the API.
-
 ### Recipe matching pagination
 
 `POST /api/v1/recipe-matches` accepts:
@@ -117,28 +113,24 @@ curl -X POST -H "Content-Type: application/json" \
 }
 ```
 
-Send `nextCursor` as `cursor` to continue. `nextCursor` is `null` on the last page. The cursor is tied to the submitted ingredients and missing threshold, so it cannot be reused for another search.
 The `ingredients` array must contain 1 to 50 UUIDs; duplicate IDs are ignored and unknown IDs are rejected.
-`GET /api/v1/categories` and `GET /api/v1/pantry-items` use the same `{ data, nextCursor }` cursor response shape; their `limit` defaults to 20 and is capped at 100. Ingredient search also defaults to 20 and is capped at 20. `POST /api/v1/recipe-matches` uses that response shape as well. Match results
-include category and author objects, match counts and percentage, and the missing ingredients for each returned recipe. Recipe detail returns the author name, parsed ingredient-line metadata, `owned` flags, and missing ingredients for the pantry session.
+
+`GET /api/v1/categories` and `GET /api/v1/pantry-items` use the same `{ data, nextCursor }` cursor response shape; their `limit` defaults to 20 and is capped at 100.
+Ingredient search also defaults to 20 and is capped at 20. 
+`POST /api/v1/recipe-matches` uses that response shape as well. Match results include category and author objects, match counts and percentage, and the missing ingredients for each returned recipe. Recipe detail returns the author name, parsed ingredient-line metadata, `owned` flags, and missing ingredients for the pantry session.
 
 Client errors use `{ "error": { "code", "message", "requestId" } }`. The API returns `400` for malformed JSON, invalid request parameters, or a missing or malformed pantry-session header; `404` for a resource outside the requested scope; and `422` for invalid match inputs or duplicate pantry items.
 
 ### Pagination cursors
 
-The three cursor-paginated `GET` endpoints and `POST /api/v1/recipe-matches` share one base class, `Cursor` (`app/services/cursor.rb`). Each cursor is a payload signed with a purpose-scoped `Rails.application.message_verifier`, so a client cannot forge a cursor, edit one, or replay one minted for a different
-endpoint — each purpose string derives a distinct signing key.
+The three cursor-paginated `GET` endpoints and `POST /api/v1/recipe-matches` share one base class, `Cursor` (`app/services/cursor.rb`). Each cursor is a payload signed with a purpose-scoped `Rails.application.message_verifier`, so a client cannot forge a cursor, edit one, or replay one minted for a different endpoint — each purpose string derives a distinct signing key.
 
-Because signing already guarantees the payload is ours and unmodified, `decode` validates only what signing cannot:
+`decode` validates only what signing cannot:
 
-- **version** — a cursor signed by a previous deploy, whose payload shape has
-  since changed, is still validly signed; `VERSION` is what rejects it.
-- **scope** — a cursor is only meaningful inside the result set it was minted
-  from. Each subclass supplies its own scope: the search query for `IngredientCursor`, the pantry id for `PantryItemCursor`, and the ingredient set + missing threshold for `RecipeMatchCursor`. `CategoryCursor` has no scope because its listing is
-  unfiltered.
+- **version** — a cursor signed by a previous deploy, whose payload shape has since changed, is still validly signed; `VERSION` is what rejects it.
+- **scope** — a cursor is only meaningful inside the result set it was minted from.
 
-Field-level type checks on the decoded payload would only re-validate values the app itself wrote one request earlier, so they are deliberately absent. A cursor that fails either check — or whose signature does not verify — raises `Cursor::InvalidCursor`, rescued once in `ApplicationController` into a `422`
-with the message `cursor is invalid`.
+A cursor that fails either check — or whose signature does not verify — raises `Cursor::InvalidCursor`, rescued once in `ApplicationController` into a `422` with the message `cursor is invalid`.
 
 Subclasses therefore carry only a purpose and a payload builder:
 
@@ -165,7 +157,7 @@ Generated from the request specs via `rswag`:
 ```bash
 bundle exec rails rswag:specs:swaggerize
 bin/rails server
-# then visit http://localhost:3000/api-docs
+# http://localhost:3000/api-docs
 ```
 
 ### Request workflow
@@ -191,8 +183,7 @@ flowchart TD
 
 ## Architecture
 
-This is a Rails 8.1 API-only modular monolith. A single application owns the HTTP API, domain services, background jobs, and PostgreSQL persistence. There is no user authentication or external message broker: an anonymous pantry is created on demand from the client-supplied `X-Pantry-Session` UUID, and pantry
-events are in-process `ActiveSupport::Notifications` events.
+This is a Rails 8.1 API-only modular monolith. A single application owns the HTTP API, domain services, background jobs, and PostgreSQL persistence. There is no user authentication or external message broker: an anonymous pantry is created on demand from the client-supplied `X-Pantry-Session` UUID, and pantry events are in-process `ActiveSupport::Notifications` events.
 
 ```mermaid
 flowchart LR
@@ -220,17 +211,16 @@ flowchart LR
   Jobs --> Source
 ```
 
-Controllers remain thin: they validate request shape, establish the current pantry when required, call a service or query scope, and serialize the result. The domain layer contains the substantial work: ingredient parsing and canonicalization, bounded/batched import, pantry mutations, signed cursor
-handling, and recipe matching. Active Record models express associations and integrity rules; PostgreSQL enforces the corresponding foreign keys and unique indexes.
+Controllers remain thin: they validate request shape, establish the current pantry when required, call a service or query scope, and serialize the result. 
+The domain layer contains the substantial work: ingredient parsing and canonicalization, bounded/batched import, pantry mutations, signed cursor handling, and recipe matching. 
+Active Record models express associations and integrity rules; PostgreSQL enforces the corresponding foreign keys and unique indexes.
 
-Recipe matching is relational and explainable. `recipe_ingredients` is the source of truth; `recipes.canonical_ingredient_ids` is a transactionally maintained `uuid[]` projection with a GIN index for complete matches. Partial matches use the normalized join table. There is no search-document table,
-embedding runtime, vector index, external search service, or result cache.
+Recipe matching is relational and explainable. `recipe_ingredients` is the source of truth; `recipes.canonical_ingredient_ids` is a transactionally maintained `uuid[]` projection with a GIN index for complete matches. 
+Partial matches use the normalized join table. There is no search-document table, embedding runtime, vector index, external search service, or result cache.
 
 The current event subscriber logs `pantry.updated`; it is an extension seam for cache invalidation or asynchronous side effects, not a message queue.
 
 ### Database schema
-
-The diagram reflects the current schema. `USERS` and the unused `pantry_items.user_id` reference have been removed; anonymous pantries remain identified by their session token.
 
 ```mermaid
 erDiagram
@@ -348,14 +338,13 @@ erDiagram
 - **Lowercase ingredient names**: Import and model writes canonicalize names to lowercase; the trigram GIN index on `(name::text)` enables case-insensitive ILIKE search.
 - **Pantry cursor index**: `pantry_items(pantry_id, created_at, id)` supports scoped keyset pagination in stable creation order without offset scans.
 - **Recipe-backed picker catalog**: `/ingredients` returns only ingredients referenced by the current recipe import, keeping stale orphaned rows out of the pantry picker.
-- **Two-phase matching read path**: `RecipeMatcher` finds complete matches through the GIN-indexed `recipes.canonical_ingredient_ids` projection, then falls back to the normalized `(ingredient_id, recipe_id)` index only when the page still needs partial matches. Missing ingredients for the limited result page are fetched in one batched query.
+- **Two-phase matching read path**: `RecipeMatcher` finds complete matches through the GIN-indexed `recipes.canonical_ingredient_ids` projection, then falls back to the normalized `(ingredient_id, recipe_id)` index only when the page still needs partial matches.
 - **Cursor-based pagination**: `GET /api/v1/ingredients`, `GET /api/v1/categories`, `GET /api/v1/pantry-items`, and `POST /api/v1/recipe-matches` return `{ data, nextCursor }`. Pass the opaque `nextCursor` as `cursor` to fetch the next page; `page` is not supported for matching. Cursors are signed and scoped to the search they were minted from — see [Pagination cursors](#pagination-cursors).
 - **PostgreSQL UUIDs**: model and bulk-import writes use PostgreSQL's `gen_random_uuid()` defaults consistently; bulk operations do not depend on model callbacks.
 
 ## Data ingestion
 
-`RecipeImport::Importer` owns the import workflow. It reads and parses the bounded JSON array once, buffers validated documents while building catalogs, and persists those documents in batches of 500 rather than issuing a query per ingredient line. Re-running it replaces each imported recipe's join rows and refreshes the
-canonical-ID projection, so parsing and normalization changes repair existing imports.
+`RecipeImport::Importer` owns the import workflow. It reads and parses the bounded JSON array once, buffers validated documents while building catalogs, and persists those documents in batches of 500 rather than issuing a query per ingredient line. Re-running it replaces each imported recipe's join rows and refreshes the canonical-ID projection, so parsing and normalization changes repair existing imports.
 
 ### Ingestion pipeline
 
@@ -382,9 +371,9 @@ flowchart TD
   U --> R
 ```
 
-### Normalization pipeline (detailed)
+### Normalization pipeline
 
-`Ingredients::Normalizer` is a series of syntactic transformations. It **never merges ingredients** — "almond flour" stays separate from "flour". Accuracy over recall: false merges break recipes.
+`Ingredients::Normalizer` is a series of syntactic transformations. It **never merges ingredients** — "almond flour" stays separate from "flour".
 
 ```mermaid
 flowchart TD
@@ -440,13 +429,12 @@ flowchart TD
   G --> H --> I --> J
 ```
 
-The endpoint validates the submitted ingredient IDs, finds and ranks up to `limit + 1` recipes, and loads missing ingredients for the returned page in a single batch. The last step does not issue one query per recipe (no N+1 query). The opaque cursor records whether it ended in the complete or partial phase,
-so a transition between the two cannot skip or repeat results and avoids offset scans.
+The endpoint validates the submitted ingredient IDs, finds and ranks up to `limit + 1` recipes, and loads missing ingredients for the returned page in a single batch. The last step does not issue one query per recipe (no N+1 query). The opaque cursor records whether it ended in the complete or partial phase, so a transition between the two cannot skip or repeat results and avoids offset scans.
 
 ### Scaling options
 
-`recipes.canonical_ingredient_ids` is a sorted, distinct `uuid[]` projection kept transactionally in sync with `recipe_ingredients`. Its GIN index serves the complete-match phase (recipes whose full canonical ingredient set is contained in the selected IDs). Partial matching remains normalized and uses
-the ingredient-leading `recipe_ingredients` index, because exact partial-match ranking still has to count the selected ingredients for every candidate.
+`recipes.canonical_ingredient_ids` is a sorted, distinct `uuid[]` projection kept transactionally in sync with `recipe_ingredients`. Its GIN index serves the complete-match phase (recipes whose full canonical ingredient set is contained in the selected IDs). 
+Partial matching remains normalized and uses the ingredient-leading `recipe_ingredients` index, because exact partial-match ranking still has to count the selected ingredients for every candidate.
 
 The current workload does not use a materialized view, cache table, external search service, or vector store. Add one only after production query profiling shows that the relational path is not meeting the required latency.
 
@@ -473,8 +461,6 @@ This recipe is included if the threshold allows ≥ 2 missing ingredients.
 bundle exec rspec
 ```
 
-Covers model specs, import and matching service specs, and direct request specs for every API endpoint. Request coverage includes session validation, pantry ownership, duplicate item rejection, cursor metadata, pagination validation, 404 responses, and no-N+1 query-count assertions.
-
 `spec/services/cursor_spec.rb` exercises the shared cursor layer once — round-trip, tampering, scope mismatch, and replay across cursor classes — rather than repeating those cases per endpoint.
 
 ## Linting & static typing
@@ -493,51 +479,63 @@ bundle exec tapioca dsl   # after model, association, or schema changes
 bundle exec srb tc        # verify the generated RBIs and service types
 ```
 
-`tapioca dsl` boots Rails, so PostgreSQL must be available. Commit the resulting changes under `sorbet/rbi/` with the related dependency or application change.
-
 ## Domain events
 
 Pantry mutations publish an `ActiveSupport::Notifications` event (`pantry.updated`) that `app/events/pantry_subscriber.rb` logs — an in-process seam for future cache invalidation, no external broker.
 
-## Further improvement: semantic recipe discovery
+## Further improvements
+
+### Semantic recipe discovery
 
 The current matcher is intentionally exact and explainable: recipes are ranked by canonical ingredient coverage. A future semantic-discovery feature could also support intent-based searches such as “quick vegetarian comfort food” and surface recipes whose wording does not exactly match the user’s query.
 
-That capability should be a separate candidate-generation stage: embed recipe content and the user query, retrieve a bounded candidate set with a vector index, then apply the existing exact ingredient and dietary filters before ranking. Exact ingredient coverage should remain the explanation shown to the
-user and the source of truth for match ranking.
+That capability should be a separate candidate-generation stage: embed recipe content and the user query, retrieve a bounded candidate set with a vector index, then apply the existing exact ingredient and dietary filters before ranking. Exact ingredient coverage should remain the explanation shown to the user and the source of truth for match ranking.
 
 This is not part of the current runtime. It would require an embedding provider, a vector-capable PostgreSQL extension and table, background generation/backfill jobs, and a product decision about how semantic candidates interact with exact-match pagination.
 
-## Further improvement: multi-language ingredient parsing
+### Multi-language ingredient parsing
 
-`Ingredients::LineParser` and `Ingredients::Normalizer` are English-only today. `UNIT_PATTERN`, `PREPARATION_WORDS`, `LEADING_DESCRIPTORS`, and the English connective word "of" are hardcoded class constants, and unit singularization relies on Rails' English inflector (`String#singularize`). A non-English source
-recipe would silently fail to match any unit or descriptor and degrade to "the whole line becomes the ingredient name" rather than raising an error.
+`Ingredients::LineParser` and `Ingredients::Normalizer` are English-only today. `UNIT_PATTERN`, `PREPARATION_WORDS`, `LEADING_DESCRIPTORS`, and the English connective word "of" are hardcoded class constants, and unit singularization relies on Rails' English inflector (`String#singularize`).
 
 Supporting other languages would require:
 
-- **Locale as an explicit pipeline input.** Threading a `locale` through `Importer` → `LineParser.new(locale:)` → `Normalizer.new(locale:)`, driven by the import source rather than inferred from ingredient text — language detection on short ingredient strings is unreliable and adds a failure mode that isn't
-  needed if the source already implies its language.
-- **Locale-keyed vocabulary instead of Ruby constants.** Moving `UNIT_PATTERN`, `PREPARATION_WORDS`, and friends into per-locale config (e.g. `config/locales/ingredient_units.<locale>.yml`), loaded and cached per locale. This is still closed-class vocabulary bounded by the language, not a table that grows with
-  the recipe catalog — it is simply duplicated per supported language instead of assuming one.
-- **Avoiding runtime singularization entirely.** Rails' English inflector cannot generalize to other languages, and it is already a source of bugs in English (e.g. its default `-ves → -fe` rule turning "cloves" into "clofe", corrected in `config/initializers/inflections.rb`). A more robust design stores each
-  unit's plural and singular surface forms directly in the locale's unit pattern and maps the matched surface form to its canonical unit via a small per-locale table, rather than deriving the singular at parse time.
-- **Locale-specific structural parsing.** English-specific stopword handling (e.g. dropping the connective "of" between a unit and an ingredient name) does not generalize — other languages place quantity, unit, and modifiers differently. Prefer starting from one shared `LineParser` whose vocabulary and
-  connective words are swapped per locale, and only fork into per-language parser strategies if a language's grammar turns out not to fit that shared structure.
+- **Locale as an explicit pipeline input.**
+Threading a `locale` through `Importer` → `LineParser.new(locale:)` → `Normalizer.new(locale:)`, driven by the import source rather than inferred from ingredient text — language detection on short ingredient strings is unreliable and adds a failure mode that isn't needed if the source already implies its language.
+- **Locale-keyed vocabulary instead of Ruby constants.** 
+Unit names, preparation words, and connectors are finite per language. Move them from hardcoded Ruby constants into per-locale config files (e.g. `config/locales/ingredient_units.<locale>.yml`), loaded and cached per locale:
+  - **Closed-class vocabulary** — ~50 units per language, bounded and static (unlike ingredients, which scale with the catalog)
+  - **Scales to multiple languages** — adding Spanish is just a new YAML file; no code changes or parser subclasses needed
+  - **Single upfront load** — no runtime language detection or guessing; the import job declares `locale: :en` and the config loads once for the batch
+- **Avoiding runtime singularization entirely.** 
+Rails' `String#singularize` has bugs (e.g., "cloves" → "clofe"), fixed case-by-case in `config/initializers/inflections.rb`. Don't derive singular forms at parse time; instead, store both singular and plural forms explicitly in per-locale config. This avoids the fragile inflection engine entirely and works for all languages:
 
-This is not part of the current runtime, which assumes a single English-language source feed.
+```ruby
+# Rather than:
+"cups".singularize  # Risky, language-specific
+
+# Store forms directly:
+EN_UNITS = { singular: "cup", plural: "cups" }
+ES_UNITS = { singular: "taza", plural: "tazas" }
+# Parser looks up whichever form it needs
+```
+- **Locale-specific structural parsing.** 
+English drops the connector "of" ("1 cup of flour" → parse as "1 cup flour"), but other languages differ: Spanish/French use "de", German omits it. Instead of building separate parsers per language, create one shared `LineParser` class that accepts locale-keyed configuration for vocabulary, unit names, and connectors. Only fork into per-language strategies if a language's ingredient grammar is fundamentally incompatible (unlikely). Example:
+
+```ruby
+# One class, swappable config — not three separate parsers
+LineParser.new(locale: :en, vocabulary: EN_UNITS, connectors: ["of"])
+LineParser.new(locale: :es, vocabulary: ES_UNITS, connectors: ["de"])
+LineParser.new(locale: :de, vocabulary: DE_UNITS, connectors: [])
+```
 
 ### Production deployment
 
 The checked-in `config/deploy.yml` is a Kamal template. Before deploying, replace its server, registry, and proxy values, then provide secrets through your deployment environment:
 
 - `RAILS_MASTER_KEY`
-- `DATABASE_URL` (or the database password expected by `config/database.yml`)
-- `FRONTEND_ORIGIN` (the exact HTTPS origin allowed to call the API)
-- `RECIPES_SOURCE_URL` (the gzip JSON recipe feed used by `ImportRecipesJob` / `db:seed`)
-
-The Rails container runs `db:prepare` on boot.
-
-Production enables HTTPS enforcement and keeps `/up` available for health checks. Configure the deployment's TLS-terminating proxy before deploying.
+- `DATABASE_URL`
+- `FRONTEND_ORIGIN`
+- `RECIPES_SOURCE_URL`
 
 ## Project structure
 
